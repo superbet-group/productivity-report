@@ -43,8 +43,7 @@ This report focuses on the latter. The goal is transparency about organizational
 
 ### Raw vs Normalized Throughput
 
-<!-- TODO: Add chart from notebook cell 11 -->
-**[CHART: PR Throughput - Raw vs Normalized]**
+![PR Throughput Raw vs Normalized](charts/pt_01_throughput_raw_vs_normalized.png)
 
 **Key takeaway**: Raw throughput is growing (+23% YoY), but per-contributor throughput is flat. Growth is from hiring, not increased individual productivity.
 
@@ -56,13 +55,11 @@ This report focuses on the latter. The goal is transparency about organizational
 
 ### Comparison by Area
 
-<!-- TODO: Add chart from notebook cell 17 -->
-**[CHART: PRs per Contributor by Area - Trend]**
+![PRs per Contributor by Area Trend](charts/pt_02_prs_per_contributor_by_area_trend.png)
 
 Throughput per contributor varies by area, likely reflecting differences in work patterns rather than performance. Infrastructure-focused teams tend toward many small changes; product teams toward fewer, larger ones.
 
-<!-- TODO: Add chart from notebook cell 20 -->
-**[CHART: Area Comparison - 6 Month Average]**
+![Area Comparison 6 Month](charts/pt_03_area_comparison_6mo.png)
 
 *Note: Uses Swarmia team assignments at time of PR. Error bars show standard deviation.*
 
@@ -90,8 +87,7 @@ Throughput per contributor varies by area, likely reflecting differences in work
 
 **Key takeaway**: Most teams deploy weekly or less. No teams have achieved daily deployment capability yet.
 
-<!-- TODO: Add chart from notebook -->
-**[CHART: Team Deployment Cadence Distribution]**
+![Team Deployment Cadence Distribution](charts/sd_01_team_cadence_distribution.png)
 
 | Cadence Tier | Teams | % of Teams |
 |--------------|-------|------------|
@@ -112,8 +108,7 @@ Throughput per contributor varies by area, likely reflecting differences in work
 
 **Key takeaway**: Median TTD is ~3 days (Moderate tier). The average is 3.6x higher due to outliers - a small percentage of deployments take weeks.
 
-<!-- TODO: Add chart from notebook -->
-**[CHART: TTD Quarterly Trend with Benchmark Zones]**
+![TTD Quarterly Trend](charts/sd_02_ttd_quarterly_trend.png)
 
 | Metric | 6-Month Baseline |
 |--------|------------------|
@@ -126,8 +121,7 @@ Throughput per contributor varies by area, likely reflecting differences in work
 
 #### Distribution
 
-<!-- TODO: Add chart from notebook -->
-**[CHART: TTD Distribution by Tier]**
+![TTD Distribution by Tier](charts/sd_03_ttd_distribution.png)
 
 | Tier | % of Deployments |
 |------|------------------|
@@ -140,8 +134,7 @@ Throughput per contributor varies by area, likely reflecting differences in work
 
 #### By Area
 
-<!-- TODO: Add chart from notebook -->
-**[CHART: TTD by Area - Avg vs Median]**
+![TTD by Area](charts/sd_04_ttd_by_area.png)
 
 | Area | Median TTD | Tier | Gap to Next Tier |
 |------|------------|------|------------------|
@@ -154,9 +147,9 @@ Throughput per contributor varies by area, likely reflecting differences in work
 
 ### What Drives TTD?
 
-<!-- TODO: Add charts from notebook -->
-**[CHART: Batch Size vs TTD]**
-**[CHART: Deployment Size vs TTD]**
+![Batch Size vs TTD](charts/sd_05_batch_size_vs_ttd.png)
+
+![Deployment Size vs TTD](charts/sd_06_deployment_size_vs_ttd.png)
 
 | Factor | Finding |
 |--------|---------|
@@ -197,8 +190,7 @@ These require incident data integration and will be added in a future iteration.
 
 > The total time a pull request spends in all stages of the development pipeline. Similar to change lead time but doesn't include time to deploy.
 
-<!-- TODO: Add chart from notebook cell 7 -->
-**[CHART: Cycle Time Trend (Average Days)]**
+![Cycle Time Trend](charts/ct_01_cycle_time_trend.png)
 
 **Key takeaway**: Average cycle time is ~3 days, but median is under 1 hour. This gap tells an important story: most PRs are fast, but a small percentage of outliers take weeks and pull up the average significantly.
 
@@ -209,8 +201,7 @@ These require incident data integration and will be added in a future iteration.
 | Average cycle time | 2.9 days |
 | Median cycle time | ~1 hour |
 
-<!-- TODO: Add chart from notebook cell 10 -->
-**[CHART: Cycle Time Distribution]**
+![Cycle Time Distribution](charts/ct_02_cycle_time_distribution.png)
 
 **The outlier story**: 74% of PRs merge within 1 day. But 5% take more than 2 weeks - these outliers are what drive the average up to nearly 3 days.
 
@@ -225,11 +216,7 @@ These require incident data integration and will be added in a future iteration.
 
 > Breaking cycle time into stages reveals exactly where work gets stuck.
 
-<!-- TODO: Add chart from notebook cell 14 (stacked area) -->
-**[CHART: Cycle Time Breakdown (Average Hours by Phase)]**
-
-<!-- TODO: Add chart from notebook cell 15 (pie chart) -->
-**[CHART: Where Does Cycle Time Go?]**
+![Cycle Time Breakdown](charts/ct_03_cycle_time_breakdown_pie.png)
 
 | Phase | Average Hours | % of Total |
 |-------|---------------|------------|
@@ -242,8 +229,7 @@ These require incident data integration and will be added in a future iteration.
 
 #### What Makes Outliers Different?
 
-<!-- TODO: Add chart from notebook cell 18 -->
-**[CHART: Where Does Time Go? Fast PRs vs Outliers]**
+*Note: Fast PRs vs Outliers comparison available in notebook.*
 
 Outliers don't have a different *pattern* of where time goes - they just take longer in every phase. The percentage breakdown is similar across fast and slow PRs.
 
@@ -260,8 +246,7 @@ Outliers don't have a different *pattern* of where time goes - they just take lo
 
 #### Outlier Rate by Area
 
-<!-- TODO: Add chart from notebook cell 20 -->
-**[CHART: Outlier Rate by Area]**
+![Outlier Rate by Area](charts/ct_04_outlier_rate_by_area.png)
 
 | Area | Outlier Rate |
 |------|--------------|
@@ -279,11 +264,7 @@ Outliers don't have a different *pattern* of where time goes - they just take lo
 
 > The number of lines changed (added + deleted) in a pull request. Smaller changes get reviewed faster and more thoroughly.
 
-<!-- TODO: Add chart from notebook cell 23 -->
-**[CHART: PR Size Trend (Median Lines Changed)]**
-
-<!-- TODO: Add chart from notebook cell 25 -->
-**[CHART: PR Size vs Cycle Time]**
+![PR Size vs Cycle Time](charts/ct_05_pr_size_vs_cycle_time.png)
 
 | Metric | 12-Month Baseline |
 |--------|-------------------|
