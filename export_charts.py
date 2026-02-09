@@ -233,15 +233,12 @@ total = df_ttd_dist['deployments'].sum()
 df_ttd_dist['pct'] = (df_ttd_dist['deployments'] / total * 100).round(1)
 df_ttd_dist['cumulative_pct'] = df_ttd_dist['pct'].cumsum()
 
-tier_colors = {'Elite': 'green', 'Fast': 'steelblue', 'Moderate': 'orange', 'Slow': 'red'}
-colors = [tier_colors[t] for t in df_ttd_dist['tier']]
-
 fig = make_subplots(specs=[[{"secondary_y": True}]])
 fig.add_trace(go.Bar(x=df_ttd_dist['ttd_bucket'], y=df_ttd_dist['pct'],
     name='% of Deployments', text=[f'{x:.0f}%' for x in df_ttd_dist['pct']],
-    textposition='outside', marker_color=colors), secondary_y=False)
+    textposition='outside', marker_color='steelblue', showlegend=False), secondary_y=False)
 fig.add_trace(go.Scatter(x=df_ttd_dist['ttd_bucket'], y=df_ttd_dist['cumulative_pct'],
-    name='Cumulative %', mode='lines+markers', line=dict(color='darkgray')), secondary_y=True)
+    name='Cumulative %', mode='lines+markers', line=dict(color='darkgray'), showlegend=False), secondary_y=True)
 
 fig.update_layout(title='Time to Deploy Distribution: Where Deployments Fall', xaxis_title='Time to Deploy')
 fig.update_yaxes(title_text='% of Deployments', secondary_y=False, range=[0, df_ttd_dist['pct'].max() * 1.3])
@@ -341,19 +338,47 @@ FROM bucketed GROUP BY 1, 2 ORDER BY sort_order
 df_batch['deployments'] = df_batch['deployments'].astype(int)
 df_batch['median_ttd_hours'] = df_batch['median_ttd_hours'].astype(float)
 
+max_y = max(df_batch['median_ttd_hours'].max() * 1.3, 30)
+
 fig = go.Figure()
+
+# Benchmark zones: Elite <1h, Fast <24h, Moderate <168h, Slow >168h
+fig.add_shape(type="rect", x0=-0.5, x1=3.5, y0=0, y1=1, xref="x", yref="y",
+              fillcolor="green", opacity=0.2, layer="below", line_width=0)
+fig.add_shape(type="rect", x0=-0.5, x1=3.5, y0=1, y1=24, xref="x", yref="y",
+              fillcolor="steelblue", opacity=0.2, layer="below", line_width=0)
+if max_y > 24:
+    fig.add_shape(type="rect", x0=-0.5, x1=3.5, y0=24, y1=min(168, max_y), xref="x", yref="y",
+                  fillcolor="orange", opacity=0.2, layer="below", line_width=0)
+if max_y > 168:
+    fig.add_shape(type="rect", x0=-0.5, x1=3.5, y0=168, y1=max_y, xref="x", yref="y",
+                  fillcolor="red", opacity=0.15, layer="below", line_width=0)
+
+fig.add_hline(y=1, line_dash="dot", line_color="darkgreen", line_width=1)
+fig.add_hline(y=24, line_dash="dot", line_color="darkblue", line_width=1)
+
 fig.add_trace(go.Bar(
     x=df_batch['batch_size'], y=df_batch['median_ttd_hours'],
     marker_color='steelblue',
     text=[f"{h:.0f}h\n(n={n:,})" for h, n in zip(df_batch['median_ttd_hours'], df_batch['deployments'])],
-    textposition='outside'
+    textposition='outside',
+    showlegend=False
 ))
+
+# Add legend for benchmark tiers
+for tier, color, label in [('Elite', 'green', 'Elite (<1h)'), ('Fast', 'steelblue', 'Fast (<1d)'),
+                            ('Moderate', 'orange', 'Moderate (<1wk)')]:
+    fig.add_trace(go.Scatter(x=[None], y=[None], mode='markers',
+        marker=dict(size=12, color=color, symbol='square'),
+        name=label, legendgroup='tiers', legendgrouptitle_text='TTD Tiers'))
+
 fig.update_layout(
     title='Does Batching PRs Slow Down Deploys?',
     xaxis_title='PRs per Deployment', yaxis_title='Median Time to Deploy (hours)',
-    showlegend=False, yaxis=dict(range=[0, df_batch['median_ttd_hours'].max() * 1.3])
+    yaxis=dict(range=[0, max_y]),
+    legend=dict(yanchor="top", y=0.99, xanchor="left", x=1.02)
 )
-save_chart(fig, 'sd_05_batch_size_vs_ttd')
+save_chart(fig, 'sd_05_batch_size_vs_ttd', width=1000)
 
 
 # --- Deployment Size vs TTD ---
@@ -395,19 +420,47 @@ FROM bucketed GROUP BY 1, 2 ORDER BY sort_order
 df_lines['deployments'] = df_lines['deployments'].astype(int)
 df_lines['median_ttd_hours'] = df_lines['median_ttd_hours'].astype(float)
 
+max_y = max(df_lines['median_ttd_hours'].max() * 1.3, 30)
+
 fig = go.Figure()
+
+# Benchmark zones: Elite <1h, Fast <24h, Moderate <168h, Slow >168h
+fig.add_shape(type="rect", x0=-0.5, x1=3.5, y0=0, y1=1, xref="x", yref="y",
+              fillcolor="green", opacity=0.2, layer="below", line_width=0)
+fig.add_shape(type="rect", x0=-0.5, x1=3.5, y0=1, y1=24, xref="x", yref="y",
+              fillcolor="steelblue", opacity=0.2, layer="below", line_width=0)
+if max_y > 24:
+    fig.add_shape(type="rect", x0=-0.5, x1=3.5, y0=24, y1=min(168, max_y), xref="x", yref="y",
+                  fillcolor="orange", opacity=0.2, layer="below", line_width=0)
+if max_y > 168:
+    fig.add_shape(type="rect", x0=-0.5, x1=3.5, y0=168, y1=max_y, xref="x", yref="y",
+                  fillcolor="red", opacity=0.15, layer="below", line_width=0)
+
+fig.add_hline(y=1, line_dash="dot", line_color="darkgreen", line_width=1)
+fig.add_hline(y=24, line_dash="dot", line_color="darkblue", line_width=1)
+
 fig.add_trace(go.Bar(
     x=df_lines['size_bucket'], y=df_lines['median_ttd_hours'],
     marker_color='steelblue',
     text=[f"{h:.0f}h\n(n={n:,})" for h, n in zip(df_lines['median_ttd_hours'], df_lines['deployments'])],
-    textposition='outside'
+    textposition='outside',
+    showlegend=False
 ))
+
+# Add legend for benchmark tiers
+for tier, color, label in [('Elite', 'green', 'Elite (<1h)'), ('Fast', 'steelblue', 'Fast (<1d)'),
+                            ('Moderate', 'orange', 'Moderate (<1wk)')]:
+    fig.add_trace(go.Scatter(x=[None], y=[None], mode='markers',
+        marker=dict(size=12, color=color, symbol='square'),
+        name=label, legendgroup='tiers', legendgrouptitle_text='TTD Tiers'))
+
 fig.update_layout(
     title='Do Larger Code Changes Take Longer to Deploy?',
     xaxis_title='Lines Changed per Deployment', yaxis_title='Median Time to Deploy (hours)',
-    showlegend=False, yaxis=dict(range=[0, df_lines['median_ttd_hours'].max() * 1.3])
+    yaxis=dict(range=[0, max_y]),
+    legend=dict(yanchor="top", y=0.99, xanchor="left", x=1.02)
 )
-save_chart(fig, 'sd_06_deployment_size_vs_ttd')
+save_chart(fig, 'sd_06_deployment_size_vs_ttd', width=1000)
 
 
 # --- Team Cadence by Area ---
@@ -881,19 +934,44 @@ ORDER BY 1
 df_size_ct['prs'] = df_size_ct['prs'].astype(int)
 df_size_ct['avg_cycle_time_days'] = df_size_ct['avg_cycle_time_days'].astype(float)
 
+max_y = df_size_ct['avg_cycle_time_days'].max() * 1.3
+
 fig = go.Figure()
+
+# Benchmark zones: Great < 1 day, Good < 5 days, Needs Attention >= 5 days
+fig.add_shape(type="rect", x0=-0.5, x1=4.5, y0=0, y1=1, xref="x", yref="y",
+              fillcolor="green", opacity=0.2, layer="below", line_width=0)
+fig.add_shape(type="rect", x0=-0.5, x1=4.5, y0=1, y1=5, xref="x", yref="y",
+              fillcolor="orange", opacity=0.2, layer="below", line_width=0)
+if max_y > 5:
+    fig.add_shape(type="rect", x0=-0.5, x1=4.5, y0=5, y1=max_y, xref="x", yref="y",
+                  fillcolor="red", opacity=0.15, layer="below", line_width=0)
+
+fig.add_hline(y=1, line_dash="dot", line_color="darkgreen", line_width=1)
+fig.add_hline(y=5, line_dash="dot", line_color="darkorange", line_width=1)
+
 fig.add_trace(go.Bar(
     x=df_size_ct['size_bucket'], y=df_size_ct['avg_cycle_time_days'],
     marker_color='steelblue',
     text=[f"{d:.1f}d\n(n={n:,})" for d, n in zip(df_size_ct['avg_cycle_time_days'], df_size_ct['prs'])],
-    textposition='outside'
+    textposition='outside',
+    showlegend=False
 ))
+
+# Add legend for benchmark tiers
+for tier, color, label in [('Great', 'green', 'Great (<1d)'), ('Good', 'orange', 'Good (<5d)'),
+                            ('Needs Attention', 'red', 'Needs Attention (≥5d)')]:
+    fig.add_trace(go.Scatter(x=[None], y=[None], mode='markers',
+        marker=dict(size=12, color=color, symbol='square'),
+        name=label, legendgroup='tiers', legendgrouptitle_text='Cycle Time Tiers'))
+
 fig.update_layout(
     title='PR Size vs Cycle Time',
     xaxis_title='PR Size (lines changed)', yaxis_title='Average Cycle Time (days)',
-    yaxis=dict(range=[0, df_size_ct['avg_cycle_time_days'].max() * 1.3])
+    yaxis=dict(range=[0, max_y]),
+    legend=dict(yanchor="top", y=0.99, xanchor="left", x=1.02)
 )
-save_chart(fig, 'ct_05_pr_size_vs_cycle_time')
+save_chart(fig, 'ct_05_pr_size_vs_cycle_time', width=1000)
 
 # --- PR Size Distribution ---
 print("\n14b. PR Size Distribution")

@@ -144,25 +144,17 @@ Cycle time has remained stable despite the team nearly doubling in 2 years. We'v
 
 Average review time is ~40h (1.7 days), median is ~1 hour. Like cycle time, outliers pull up the average.
 
-**Trend**: Review time has been declining over the past year. This may be related to AI-assisted review tools we've been investing in—worth investigating further in the AI section.
+**Trend**: Review time has been declining over the past year. This may be related to AI-assisted review tools we've been investing in—we'll investigate further in the AI section.
 
 ![Review Time: Waiting vs Iteration](charts/ct_11_review_waiting_vs_iteration.png)
 
-**Waiting vs Iteration**: Of the 40h average, 42% is waiting for first review (~17h) and 58% is actual review iteration (~23h). Review time isn't purely a "waiting" problem—most of it is legitimate back-and-forth.
+**Waiting vs Iteration**: Of the 40h average, 42% is waiting for first review (~17h) and 58% is review iteration (~23h). Review time isn't purely a "waiting" problem—most of it is legitimate back-and-forth.
 
 #### By Area
 
 ![Review Time by Area](charts/ct_08_review_time_by_area.png)
 
-Player takes 3.5x longer than Data in review.
-
-#### By Day of Week
-
-![Review Time by Day](charts/ct_09_review_time_by_day.png)
-
-PRs requested on Friday take longer—they sit over the weekend.
-
-### What Makes Outliers Different?
+### Outlier Deep Dive
 
 ![Outlier Breakdown](charts/ct_06_outlier_breakdown.png)
 
@@ -197,19 +189,17 @@ Larger PRs take longer—XL PRs (>400 lines) average 8.6 days vs 1.6 days for XS
 
 ### Insights
 
-1. **Most PRs are fast** - 74% merge within a day, 66% complete review in <4 hours. The "typical developer experience" is quick iteration.
+1. **Most PRs are fast** - 74% merge within a day. The typical developer experience is quick iteration.
 
-2. **Outliers drive the average** - 5% of PRs take >2 weeks and account for most of the average cycle time. Reducing outliers would have outsized impact.
+2. **5% of PRs account for most of the average cycle time** - Outliers (>2 weeks) pull the average from ~1 hour to ~3 days. Reducing outliers would have outsized impact.
 
-3. **Outliers are bigger, not stuck differently** - They're 7x larger and slow in every phase. This suggests the fix is smaller PRs, not process changes.
+3. **Outliers are stuck in progress, not review** - Fast PRs spend 60% of time in review. Outliers spend 46% in the coding phase itself. They're not waiting on reviewers—they're big, complex changes that take longer to build.
 
-4. **Review time is 38% waiting, 62% iteration** - Review isn't purely a "pickup" problem. Most review time is legitimate back-and-forth, though the 15h average wait for first review is still significant.
+4. **PR size is the biggest lever** - XL PRs (>400 lines) take 5x longer than XS PRs (≤50 lines). Two-thirds of PRs are already small—the opportunity is converting the 12% that are XL.
 
-5. **PR size is the biggest lever** - Large PRs take 4.5x longer in review and 2.5x longer overall. Two-thirds of PRs are already small (≤50 lines) - the opportunity is converting the 11% that are XL.
+5. **Review time is declining** - Review time has trended down over the past year, potentially related to AI-assisted review tools. We'll investigate further in the AI section.
 
-6. **Friday effect is real** - PRs requested on Friday take 60% longer (50h vs 31h). Consider not requesting reviews late Friday.
-
-7. **Area variation is significant** - Player takes 3.5x longer than Data in review (63h vs 18h). Worth investigating what Data does differently.
+6. **Significant variation across areas** - Player takes 3.5x longer than Data in review (63h vs 18h). Understanding what drives this gap could reveal improvement opportunities.
 
 *Analysis: `notebooks/cycle_time.ipynb`*
 
@@ -224,10 +214,10 @@ This section covers **Player, Sports, Social, and Platform**, the four areas whe
 
 | Area | What's Included |
 |------|-----------------|
-| Player | Production app deployments |
+| Player | Backend service deployments |
 | Sports | Monorepo deployments (~70% of services) |
 | Social | Backend production deployments |
-| Platform | Monorepo deployments (tools & infrastructure) |
+| Platform | Monorepo deployments |
 
 **Not included**: Core Experience, Data, and Gaming don't have consistent deployment tracking yet. They're included in PR-based metrics (throughput, cycle time) but excluded here. We're working on getting their deployment data and should have it soon.
 
@@ -279,7 +269,7 @@ Deployment frequency varies significantly by area. Platform has the highest conc
 | Moderate (<1 week) | 28% |
 | Slow (>1 week) | 35% |
 
-**37% of deployments ship within a day of merge** - these represent healthy CI/CD pipelines. The 35% taking over a week are pulling up the average significantly.
+**37% of deployments ship within a day of merge.** The 35% taking over a week pull up the average significantly.
 
 #### By Area
 
@@ -319,7 +309,7 @@ Most deployments are single-PR, and these deploy faster than multi-PR batches.
 
 2. **37% of deploys are fast, 35% are slow** - There's a bimodal distribution. Some pipelines work well; others have significant delays.
 
-3. **Platform leads, Social lags** - 13x difference in median TTD between fastest and slowest areas. Worth investigating what Platform does differently.
+3. **Platform deploys fastest** - 13x difference in median TTD between fastest and slowest areas. Understanding what Platform does differently could benefit other areas.
 
 4. **Smaller batches = faster deploys** - Single-PR deployments are faster. Teams batching multiple PRs may be working around deployment friction rather than fixing it.
 
@@ -332,7 +322,7 @@ The following stability metrics are not included in this baseline:
 - **Failed Deployment Recovery Time** - Time to recover from deployment failures
 - **Deployment Rework Rate** - % of unplanned/reactive deployments
 
-These require incident data integration and will be added in a future iteration.
+We're currently working on capturing this data and will add analysis in a future iteration.
 
 *Analysis: `notebooks/software_delivery.ipynb`*
 
