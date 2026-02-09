@@ -410,6 +410,119 @@ fig.update_layout(
 save_chart(fig, 'sd_06_deployment_size_vs_ttd')
 
 
+# --- Team Cadence by Area ---
+print("\n7. Team Deployment Cadence by Area")
+
+df_cadence_by_area = run_query(f"""
+WITH date_range AS (
+    SELECT DATEDIFF('day',
+        DATEADD('month', -3, DATE_TRUNC('month', CURRENT_DATE)),
+        DATE_TRUNC('month', CURRENT_DATE)
+    ) as total_days
+),
+parent_teams AS (
+    SELECT DISTINCT t.name
+    FROM RAW_MISC.SWARMIA_TEAMS t
+    INNER JOIN (
+        SELECT DISTINCT parent_team_id as id
+        FROM RAW_MISC.SWARMIA_TEAMS
+        WHERE parent_team_id IS NOT NULL AND deleted_at IS NULL
+    ) p ON t.id = p.id
+    WHERE t.deleted_at IS NULL
+),
+team_ancestors AS (
+    SELECT t.id, t.name as team_name, t.parent_team_id, p.name as parent_name, 1 as depth
+    FROM RAW_MISC.SWARMIA_TEAMS t
+    LEFT JOIN RAW_MISC.SWARMIA_TEAMS p ON t.parent_team_id = p.id
+    WHERE t.deleted_at IS NULL
+    UNION ALL
+    SELECT ta.id, ta.team_name, p.parent_team_id, gp.name as parent_name, ta.depth + 1
+    FROM team_ancestors ta
+    JOIN RAW_MISC.SWARMIA_TEAMS p ON ta.parent_team_id = p.id
+    LEFT JOIN RAW_MISC.SWARMIA_TEAMS gp ON p.parent_team_id = gp.id
+    WHERE p.deleted_at IS NULL AND ta.depth < 10
+),
+team_areas AS (
+    SELECT id, team_name, parent_name as area
+    FROM team_ancestors
+    WHERE parent_name IN {tuple(TRACKED_AREAS)}
+    QUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY depth ASC) = 1
+),
+flat_area_teams AS (
+    -- Teams that ARE the area itself (no parent, name matches area) - e.g. Social
+    SELECT name as team_name, name as area
+    FROM RAW_MISC.SWARMIA_TEAMS
+    WHERE parent_team_id IS NULL
+        AND name IN {tuple(TRACKED_AREAS)}
+        AND deleted_at IS NULL
+),
+team_area_lookup AS (
+    SELECT team_name, area FROM team_areas WHERE area IN {tuple(TRACKED_AREAS)}
+    UNION
+    SELECT team_name, area FROM flat_area_teams
+),
+filtered_deploys AS (
+    SELECT * FROM RAW_MISC.SWARMIA_DEPLOYMENTS
+    WHERE deployed_at >= DATEADD('month', -3, DATE_TRUNC('month', CURRENT_DATE))
+        AND DATE_TRUNC('month', deployed_at) < DATE_TRUNC('month', CURRENT_DATE)
+        AND {ENV_FILTER}
+),
+team_deploys AS (
+    SELECT f.value::string as team_name, DATE_TRUNC('day', deployed_at)::DATE as deploy_date
+    FROM filtered_deploys d, LATERAL FLATTEN(input => d.involved_team_names) f
+    WHERE f.value::string NOT IN (SELECT name FROM parent_teams)
+),
+team_stats AS (
+    SELECT team_name,
+        COUNT(DISTINCT deploy_date) as deploy_days,
+        COUNT(DISTINCT deploy_date) * 100.0 / (SELECT total_days FROM date_range) as cadence_pct
+    FROM team_deploys GROUP BY 1
+    HAVING COUNT(DISTINCT deploy_date) >= 3
+)
+SELECT
+    ta.area,
+    ts.team_name,
+    ts.cadence_pct,
+    CASE
+        WHEN ts.cadence_pct >= 80 THEN 'Elite (daily)'
+        WHEN ts.cadence_pct >= 40 THEN 'High (2-3x/week)'
+        WHEN ts.cadence_pct >= 20 THEN 'Medium (weekly)'
+        ELSE 'Low (<weekly)'
+    END as cadence_tier
+FROM team_stats ts
+JOIN team_area_lookup ta ON ts.team_name = ta.team_name
+ORDER BY ta.area, ts.cadence_pct DESC
+""")
+
+# Summarize by area and tier
+tier_order = ['Elite (daily)', 'High (2-3x/week)', 'Medium (weekly)', 'Low (<weekly)']
+area_tier_summary = df_cadence_by_area.groupby(['area', 'cadence_tier']).size().reset_index(name='count')
+area_tier_summary['cadence_tier'] = pd.Categorical(area_tier_summary['cadence_tier'], categories=tier_order, ordered=True)
+
+# Create stacked bar chart
+tier_colors = {'Elite (daily)': 'green', 'High (2-3x/week)': 'orange',
+               'Medium (weekly)': 'coral', 'Low (<weekly)': 'red'}
+
+fig = go.Figure()
+for tier in tier_order:
+    tier_data = area_tier_summary[area_tier_summary['cadence_tier'] == tier]
+    fig.add_trace(go.Bar(
+        x=tier_data['area'],
+        y=tier_data['count'],
+        name=tier,
+        marker_color=tier_colors[tier]
+    ))
+
+fig.update_layout(
+    title='Deployment Cadence by Area (Last 3 Months)',
+    xaxis_title='Area',
+    yaxis_title='Number of Teams',
+    barmode='stack',
+    legend_title='Cadence Tier'
+)
+save_chart(fig, 'sd_01b_cadence_by_area')
+
+
 print("\n=== SOFTWARE DELIVERY CHARTS COMPLETE ===")
 
 
@@ -461,40 +574,25 @@ save_chart(fig, 'pt_01_throughput_raw_vs_normalized')
 print("\n8. PRs per Contributor by Area - Trend")
 
 df_area_monthly = run_query(f"""
-WITH pr_teams AS (
-    SELECT p.*, f.value::string as team_name
+WITH pr_by_area AS (
+    SELECT
+        DATE_TRUNC('month', p.github_created_at)::DATE as month,
+        p.author_id,
+        f.value::string as area
     FROM RAW_MISC.SWARMIA_PULL_REQUESTS p,
         LATERAL FLATTEN(input => p.owner_team_names) f
     WHERE p.pr_status = 'MERGED' AND p.is_excluded = FALSE
         AND p.github_created_at >= '2024-01-01'
         AND DATE_TRUNC('month', p.github_created_at) < DATE_TRUNC('month', CURRENT_DATE)
-),
-team_ancestors AS (
-    SELECT t.id, t.name as team_name, t.parent_team_id, p.name as parent_name, 1 as depth
-    FROM RAW_MISC.SWARMIA_TEAMS t
-    LEFT JOIN RAW_MISC.SWARMIA_TEAMS p ON t.parent_team_id = p.id
-    WHERE t.deleted_at IS NULL
-    UNION ALL
-    SELECT ta.id, ta.team_name, p.parent_team_id, gp.name as parent_name, ta.depth + 1
-    FROM team_ancestors ta
-    JOIN RAW_MISC.SWARMIA_TEAMS p ON ta.parent_team_id = p.id
-    LEFT JOIN RAW_MISC.SWARMIA_TEAMS gp ON p.parent_team_id = gp.id
-    WHERE p.deleted_at IS NULL AND ta.depth < 10
-),
-team_areas AS (
-    SELECT team_name, parent_name as area
-    FROM team_ancestors
-    WHERE parent_name IN {tuple(ALL_AREAS)}
-    QUALIFY ROW_NUMBER() OVER (PARTITION BY team_name ORDER BY depth ASC) = 1
+        AND f.value::string IN {tuple(ALL_AREAS)}
 )
 SELECT
-    ta.area,
-    DATE_TRUNC('month', pt.github_created_at)::DATE as month,
+    area,
+    month,
     COUNT(*) as prs_merged,
-    COUNT(DISTINCT pt.author_id) as contributors,
-    ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT pt.author_id), 0), 1) as prs_per_contributor
-FROM pr_teams pt
-JOIN team_areas ta ON pt.team_name = ta.team_name
+    COUNT(DISTINCT author_id) as contributors,
+    ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT author_id), 0), 1) as prs_per_contributor
+FROM pr_by_area
 GROUP BY 1, 2
 ORDER BY 1, 2
 """)
@@ -508,61 +606,51 @@ fig.update_layout(xaxis_title='Month', yaxis_title='PRs per Contributor', legend
 save_chart(fig, 'pt_02_prs_per_contributor_by_area_trend')
 
 
-# --- Area Comparison 6 Month Average ---
-print("\n9. Area Comparison - 6 Month Average")
+# --- Area Comparison: Average Monthly PRs per Contributor ---
+print("\n9. Area Comparison - Average Monthly PRs per Contributor")
 
+# Calculate monthly PRs/contributor per area, then average those monthly values
+# This matches the notebook's methodology
 df_area_6mo = run_query(f"""
-WITH pr_teams AS (
-    SELECT p.*, f.value::string as team_name
+WITH monthly_by_area AS (
+    SELECT
+        DATE_TRUNC('month', p.github_created_at)::DATE as month,
+        f.value::string as area,
+        COUNT(*) as prs_merged,
+        COUNT(DISTINCT p.author_id) as contributors,
+        COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT p.author_id), 0) as prs_per_contributor
     FROM RAW_MISC.SWARMIA_PULL_REQUESTS p,
         LATERAL FLATTEN(input => p.owner_team_names) f
     WHERE p.pr_status = 'MERGED' AND p.is_excluded = FALSE
         AND p.github_created_at >= DATEADD('month', -6, DATE_TRUNC('month', CURRENT_DATE))
         AND DATE_TRUNC('month', p.github_created_at) < DATE_TRUNC('month', CURRENT_DATE)
-),
-team_ancestors AS (
-    SELECT t.id, t.name as team_name, t.parent_team_id, p.name as parent_name, 1 as depth
-    FROM RAW_MISC.SWARMIA_TEAMS t
-    LEFT JOIN RAW_MISC.SWARMIA_TEAMS p ON t.parent_team_id = p.id
-    WHERE t.deleted_at IS NULL
-    UNION ALL
-    SELECT ta.id, ta.team_name, p.parent_team_id, gp.name as parent_name, ta.depth + 1
-    FROM team_ancestors ta
-    JOIN RAW_MISC.SWARMIA_TEAMS p ON ta.parent_team_id = p.id
-    LEFT JOIN RAW_MISC.SWARMIA_TEAMS gp ON p.parent_team_id = gp.id
-    WHERE p.deleted_at IS NULL AND ta.depth < 10
-),
-team_areas AS (
-    SELECT team_name, parent_name as area
-    FROM team_ancestors
-    WHERE parent_name IN {tuple(ALL_AREAS)}
-    QUALIFY ROW_NUMBER() OVER (PARTITION BY team_name ORDER BY depth ASC) = 1
+        AND f.value::string IN {tuple(ALL_AREAS)}
+    GROUP BY 1, 2
 )
 SELECT
-    ta.area,
-    COUNT(*) as prs_merged,
-    COUNT(DISTINCT pt.author_id) as contributors,
-    ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT pt.author_id), 0), 1) as prs_per_contributor,
-    ROUND(STDDEV(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT pt.author_id), 0)) OVER (), 1) as std_dev
-FROM pr_teams pt
-JOIN team_areas ta ON pt.team_name = ta.team_name
+    area,
+    ROUND(AVG(prs_per_contributor), 1) as avg_prs_per_contributor,
+    ROUND(STDDEV(prs_per_contributor), 1) as std_dev
+FROM monthly_by_area
 GROUP BY 1
-ORDER BY prs_per_contributor DESC
+ORDER BY avg_prs_per_contributor DESC
 """)
 
-df_area_6mo['prs_per_contributor'] = df_area_6mo['prs_per_contributor'].astype(float)
+df_area_6mo['avg_prs_per_contributor'] = df_area_6mo['avg_prs_per_contributor'].astype(float)
+df_area_6mo['std_dev'] = df_area_6mo['std_dev'].fillna(0).astype(float)
 
 fig = go.Figure()
 fig.add_trace(go.Bar(
-    x=df_area_6mo['area'], y=df_area_6mo['prs_per_contributor'],
+    x=df_area_6mo['area'], y=df_area_6mo['avg_prs_per_contributor'],
     marker_color='steelblue',
-    text=[f"{x:.1f}" for x in df_area_6mo['prs_per_contributor']],
-    textposition='outside'
+    text=[f"{x:.1f}" for x in df_area_6mo['avg_prs_per_contributor']],
+    textposition='outside',
+    error_y=dict(type='data', array=df_area_6mo['std_dev'], visible=True)
 ))
 fig.update_layout(
-    title='PRs per Contributor by Area (6-Month Average)',
-    xaxis_title='Area', yaxis_title='PRs per Contributor',
-    yaxis=dict(range=[0, df_area_6mo['prs_per_contributor'].max() * 1.2])
+    title='Average Monthly PRs per Contributor by Area',
+    xaxis_title='Area', yaxis_title='PRs per Contributor (monthly avg)',
+    yaxis=dict(range=[0, (df_area_6mo['avg_prs_per_contributor'] + df_area_6mo['std_dev']).max() * 1.2])
 )
 save_chart(fig, 'pt_03_area_comparison_6mo')
 
@@ -681,8 +769,9 @@ save_chart(fig, 'ct_03_cycle_time_breakdown_pie')
 print("\n13. Outlier Rate by Area")
 
 df_outlier_area = run_query(f"""
-WITH pr_teams AS (
-    SELECT p.*, f.value::string as team_name,
+WITH pr_by_area AS (
+    SELECT
+        f.value::string as area,
         CASE WHEN cycle_time_seconds > 1209600 THEN 1 ELSE 0 END as is_outlier
     FROM RAW_MISC.SWARMIA_PULL_REQUESTS p,
         LATERAL FLATTEN(input => p.owner_team_names) f
@@ -690,32 +779,14 @@ WITH pr_teams AS (
         AND p.cycle_time_seconds IS NOT NULL
         AND p.github_created_at >= DATEADD('month', -12, DATE_TRUNC('month', CURRENT_DATE))
         AND DATE_TRUNC('month', p.github_created_at) < DATE_TRUNC('month', CURRENT_DATE)
-),
-team_ancestors AS (
-    SELECT t.id, t.name as team_name, t.parent_team_id, p.name as parent_name, 1 as depth
-    FROM RAW_MISC.SWARMIA_TEAMS t
-    LEFT JOIN RAW_MISC.SWARMIA_TEAMS p ON t.parent_team_id = p.id
-    WHERE t.deleted_at IS NULL
-    UNION ALL
-    SELECT ta.id, ta.team_name, p.parent_team_id, gp.name as parent_name, ta.depth + 1
-    FROM team_ancestors ta
-    JOIN RAW_MISC.SWARMIA_TEAMS p ON ta.parent_team_id = p.id
-    LEFT JOIN RAW_MISC.SWARMIA_TEAMS gp ON p.parent_team_id = gp.id
-    WHERE p.deleted_at IS NULL AND ta.depth < 10
-),
-team_areas AS (
-    SELECT team_name, parent_name as area
-    FROM team_ancestors
-    WHERE parent_name IN {tuple(ALL_AREAS)}
-    QUALIFY ROW_NUMBER() OVER (PARTITION BY team_name ORDER BY depth ASC) = 1
+        AND f.value::string IN {tuple(ALL_AREAS)}
 )
 SELECT
-    ta.area,
+    area,
     COUNT(*) as total_prs,
-    SUM(pt.is_outlier) as outlier_prs,
-    ROUND(SUM(pt.is_outlier) * 100.0 / COUNT(*), 1) as outlier_rate
-FROM pr_teams pt
-JOIN team_areas ta ON pt.team_name = ta.team_name
+    SUM(is_outlier) as outlier_prs,
+    ROUND(SUM(is_outlier) * 100.0 / COUNT(*), 1) as outlier_rate
+FROM pr_by_area
 GROUP BY 1
 ORDER BY outlier_rate DESC
 """)

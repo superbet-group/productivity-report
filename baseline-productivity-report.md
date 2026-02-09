@@ -59,9 +59,9 @@ This report focuses on the latter. The goal is transparency about organizational
 
 Throughput per contributor varies by area, likely reflecting differences in work patterns rather than performance. Infrastructure-focused teams tend toward many small changes; product teams toward fewer, larger ones.
 
-![Area Comparison 6 Month](charts/pt_03_area_comparison_6mo.png)
+![Average Monthly PRs per Contributor by Area](charts/pt_03_area_comparison_6mo.png)
 
-*Note: Uses Swarmia team assignments at time of PR. Error bars show standard deviation.*
+*Note: Shows average monthly PRs per contributor over the last 6 months. Error bars show month-to-month variation (standard deviation).*
 
 ### Insights
 
@@ -81,6 +81,12 @@ Throughput per contributor varies by area, likely reflecting differences in work
 
 > DORA metrics provide the clearest picture of an organization's delivery capability and stability. This baseline covers **throughput** metrics (deployment frequency and time to deploy). Stability metrics (change fail rate, recovery time) are out of scope for this initial baseline.
 
+### Areas Covered
+
+This section covers **Player, Sports, Social, and Platform** - the four areas where we can reliably identify production deployments via deployment environment patterns in Swarmia.
+
+**Not included**: Core Experience, Data, and Gaming. These areas don't have consistent deployment environment naming that allows us to filter to production deployments. They're included in PR-based metrics (throughput, cycle time) but excluded from deployment metrics. We're working on getting their deployment data and should have it soon.
+
 ### Deployment Frequency
 
 > How often teams can ship to production. This is a proxy for delivery capability - elite teams can deploy whenever they need to.
@@ -89,18 +95,17 @@ Throughput per contributor varies by area, likely reflecting differences in work
 
 ![Team Deployment Cadence Distribution](charts/sd_01_team_cadence_distribution.png)
 
-| Cadence Tier | Teams | % of Teams |
-|--------------|-------|------------|
-| Elite (daily) | 0 | 0% |
-| High (2-3x/week) | 3 | 12% |
-| Medium (weekly) | 9 | 38% |
-| Low (<weekly) | 12 | 50% |
+Half of teams deploy less than weekly. No teams have achieved daily deployment capability yet, though 3 teams (12%) deploy 2-3x per week.
 
-*Based on 24 teams in tracked areas (Player, Sports, Social, Platform) with ≥3 deploy days in last 3 months.*
+#### By Area
+
+![Deployment Cadence by Area](charts/sd_01b_cadence_by_area.png)
+
+Deployment frequency varies significantly by area. Platform has the highest concentration of high-frequency deployers - this aligns with their faster Time to Deploy metrics.
+
+*Based on teams in tracked areas (Player, Sports, Social, Platform) with ≥3 deploy days in last 3 months.*
 
 **Top performers**: Transact (54%), Release Engineering (49%), App Frameworks (42%) - these teams can deploy 2-3x per week.
-
-**Per-service cadence**: Even our most frequently deployed services only deploy ~15% of days (roughly weekly). No service is on true continuous deployment.
 
 ### Time to Deploy
 
