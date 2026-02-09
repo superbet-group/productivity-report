@@ -2,10 +2,7 @@
 
 ## Executive Summary
 
-- Key findings
-- Overall productivity baseline
-- Top opportunities for improvement
-- Top wins/strengths
+*Work in progress*
 
 
 ## Introduction & Methodology
@@ -117,6 +114,8 @@ Average cycle time is ~3 days, but median is under 1 hour. The typical PR (media
 | Slow (1-2 weeks) | 4% | 10 days |
 | Outlier (>2 weeks) | 5% | 37 days |
 
+Most PRs (74%) merge within a day—that's the typical developer experience. The 5% that take >2 weeks are the outliers pulling the average up from ~1 hour to ~3 days.
+
 ### Trend
 
 ![Cycle Time Trend](charts/ct_01b_cycle_time_trend_median.png)
@@ -179,7 +178,7 @@ Two-thirds of PRs are small (≤50 lines). 12% are large (>400 lines).
 
 ![PR Size vs Cycle Time](charts/ct_05_pr_size_vs_cycle_time.png)
 
-Larger PRs take longer—XL PRs (>400 lines) average 8.6 days vs 1.6 days for XS (≤50 lines). This connects the dots: outliers are stuck in progress because they're bigger.
+Larger PRs take longer—XL PRs (>400 lines) average 8.6 days vs 1.6 days for XS (≤50 lines).
 
 ### Build Time and CI Feedback Speed
 
@@ -311,7 +310,7 @@ Most deployments are single-PR, and these deploy faster than multi-PR batches.
 
 3. **Platform deploys fastest** - 13x difference in median TTD between fastest and slowest areas. Understanding what Platform does differently could benefit other areas.
 
-4. **Smaller batches = faster deploys** - Single-PR deployments are faster. Teams batching multiple PRs may be working around deployment friction rather than fixing it.
+4. **Smaller batches = faster deploys** - Single-PR deployments are faster.
 
 5. **Gap to next tier is achievable** - Most areas need to shave 1-3 days off median TTD to reach the next performance tier.
 
@@ -404,24 +403,59 @@ We're currently working on capturing this data and will add analysis in a future
 
 > Summary view across organizational units.
 
-- Area-by-area summary table
-- Tribe-by-tribe summary table
-- Pain points by team
-- Top performers
+### Area Overview
+
+At-a-glance comparison of each area's performance across key metrics.
+
+*Periods: PRs/Contributor (6 months) · Cycle Time, Review Time (12 months) · Time to Deploy (6 months) · Deploy Freq (3 months)*
+
+| Area | PRs/Contributor | Cycle Time | Review Time | Time to Deploy | Deploy Freq |
+|------|-----------------|------------|-------------|----------------|-------------|
+| **Platform** | 10.5 | 🟡 1.6d | 🟢 19h | 🟢 12.6h | 🟢 Highest |
+| **Data** | 10.7 | 🟡 1.5d | 🟢 19h | — | — |
+| **Core Experience** | 13.6 | 🟡 2.3d | 🟡 25h | — | — |
+| **Sports** | 10.5 | 🟡 3.5d | 🟡 47h | 🟡 2.2d | 🟡 |
+| **Gaming** | 9.8 | 🟡 3.5d | 🟡 32h | — | — |
+| **Social** | 7.4 | 🟡 4.1d | 🟡 44h | 🔴 7.0d | 🟡 |
+| **Player** | 5.9 | 🔴 5.3d | 🔴 64h | 🟡 3.6d | 🟡 |
+
+*🟢 Great | 🟡 Good | 🔴 Needs attention | — No deployment data*
+
+**Thresholds**: Cycle Time (🟢 <1d, 🟡 1-5d, 🔴 ≥5d) · Review Time (🟢 <24h, 🟡 24-48h, 🔴 ≥48h) · TTD (🟢 <1d, 🟡 <1wk, 🔴 ≥1wk)
+
+### Observations
+
+1. **Platform and Data are consistently strong** — Both areas are green on review time and lead on cycle time. Understanding their practices could benefit other areas.
+
+2. **Throughput varies by domain** — Ranges from 5.9 to 13.6 PRs/contributor/month.
+
+3. **3.5x variation in review time** — Ranges from 19h (Data, Platform) to 64h (Player). This gap suggests opportunity for cross-area learning.
+
+4. **TTD and dev metrics don't always correlate** — Slow deployments can exist alongside healthy cycle times, suggesting pipeline friction rather than development issues.
+
+5. **Core Experience, Data, Gaming missing deployment data** — Tracking not yet configured for these areas.
+
+### Top Performers
+
+| Metric | Leader | Value |
+|--------|--------|-------|
+| Fastest Cycle Time | Data | 1.5 days |
+| Fastest Review Time | Data, Platform | 19h |
+| Fastest Time to Deploy | Platform | 12.6h |
+| Highest Deploy Frequency | Transact, Release Engineering, App Frameworks | 2-3x/week |
 
 
-## Recommendations & Next Steps
+## Recommendations
 
-### Dashboards
+*To be added — requires qualitative input to turn insights into actionable investment decisions.*
 
-This report provides a point-in-time baseline, but productivity measurement is an ongoing practice. We will create dashboards that mirror the structure of this report, allowing teams and leaders to:
+## Next Steps
 
-- **Track trends over time**: See how metrics evolve week-over-week, month-over-month
-- **Self-serve exploration**: Filter by Area, Tribe, or Squad without waiting for a new report
-- **Compare against baseline**: Understand whether investments are moving the needle
-- **Enable transparency**: Teams can see the same data leadership sees, reinforcing that metrics are for organizational health, not surveillance
+1. **Complete deployment tracking** — Add Core Experience, Data, and Gaming to DORA metrics for fuller coverage.
 
-The dashboards serve as the **data layer** while this report serves as the **narrative layer** - one source of truth, multiple ways to consume it.
+2. **Build dashboards** — Create self-serve dashboards mirroring this report's structure, allowing teams and leaders to track trends, filter by Area/Tribe/Squad, and compare against this baseline.
+
+3. **Integrate qualitative input** — Incorporate existing qualitative data into this report and run a developer survey to understand root causes behind the numbers.
 
 
 ## Appendix
