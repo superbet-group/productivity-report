@@ -664,34 +664,79 @@ print("\n=== PR THROUGHPUT CHARTS COMPLETE ===")
 print("\n=== CYCLE TIME CHARTS ===")
 
 # --- Cycle Time Trend ---
-print("\n10. Cycle Time Trend (Average Days)")
+print("\n10. Cycle Time Trend")
 
-df_ct_monthly = run_query("""
+df_ct_trend = run_query("""
 SELECT
     DATE_TRUNC('month', github_created_at)::DATE as month,
-    ROUND(AVG(cycle_time_seconds) / 86400.0, 2) as avg_cycle_time_days,
-    ROUND(MEDIAN(cycle_time_seconds) / 3600.0, 1) as median_cycle_time_hours
+    ROUND(AVG(cycle_time_seconds) / 86400.0, 2) as avg_cycle_time_days
 FROM RAW_MISC.SWARMIA_PULL_REQUESTS
 WHERE pr_status = 'MERGED'
     AND is_excluded = FALSE
     AND cycle_time_seconds IS NOT NULL
-    AND github_created_at >= '2023-01-01'
+    AND github_created_at >= '2024-01-01'
     AND DATE_TRUNC('month', github_created_at) < DATE_TRUNC('month', CURRENT_DATE)
 GROUP BY 1
 ORDER BY 1
 """)
 
-df_ct_monthly['month'] = pd.to_datetime(df_ct_monthly['month'])
-df_ct_monthly['avg_cycle_time_days'] = df_ct_monthly['avg_cycle_time_days'].astype(float)
+df_ct_trend['month'] = pd.to_datetime(df_ct_trend['month'])
+df_ct_trend['avg_cycle_time_days'] = df_ct_trend['avg_cycle_time_days'].astype(float)
 
 fig = go.Figure()
-fig.add_trace(go.Scatter(x=df_ct_monthly['month'], y=df_ct_monthly['avg_cycle_time_days'],
-    mode='lines+markers', name='Average', line=dict(color='steelblue', width=2)))
-fig.add_hline(y=df_ct_monthly['avg_cycle_time_days'].mean(), line_dash="dot",
-              line_color="gray", annotation_text="12-mo avg")
-fig.update_layout(title='Cycle Time Trend (Average Days)',
-                  xaxis_title='Month', yaxis_title='Average Cycle Time (days)')
+fig.add_trace(go.Scatter(
+    x=df_ct_trend['month'], y=df_ct_trend['avg_cycle_time_days'],
+    mode='lines+markers', line=dict(color='steelblue', width=2),
+    marker=dict(size=8)
+))
+
+# Add overall average line
+avg_overall = df_ct_trend['avg_cycle_time_days'].mean()
+fig.add_hline(y=avg_overall, line_dash="dot", line_color="gray",
+              annotation_text=f"Avg: {avg_overall:.1f}d", annotation_position="right")
+
+fig.update_layout(
+    title='Average Cycle Time Trend',
+    xaxis_title='Month', yaxis_title='Average Cycle Time (days)'
+)
 save_chart(fig, 'ct_01_cycle_time_trend')
+
+# --- Cycle Time Trend (Median) ---
+print("\n10b. Cycle Time Trend (Median)")
+
+df_ct_median = run_query("""
+SELECT
+    DATE_TRUNC('month', github_created_at)::DATE as month,
+    ROUND(MEDIAN(cycle_time_seconds) / 3600.0, 2) as median_cycle_time_hours
+FROM RAW_MISC.SWARMIA_PULL_REQUESTS
+WHERE pr_status = 'MERGED'
+    AND is_excluded = FALSE
+    AND cycle_time_seconds IS NOT NULL
+    AND github_created_at >= '2024-01-01'
+    AND DATE_TRUNC('month', github_created_at) < DATE_TRUNC('month', CURRENT_DATE)
+GROUP BY 1
+ORDER BY 1
+""")
+
+df_ct_median['month'] = pd.to_datetime(df_ct_median['month'])
+df_ct_median['median_cycle_time_hours'] = df_ct_median['median_cycle_time_hours'].astype(float)
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(
+    x=df_ct_median['month'], y=df_ct_median['median_cycle_time_hours'],
+    mode='lines+markers', line=dict(color='darkblue', width=2),
+    marker=dict(size=8)
+))
+
+median_overall = df_ct_median['median_cycle_time_hours'].mean()
+fig.add_hline(y=median_overall, line_dash="dot", line_color="gray",
+              annotation_text=f"Avg: {median_overall:.1f}h", annotation_position="right")
+
+fig.update_layout(
+    title='Median Cycle Time Trend',
+    xaxis_title='Month', yaxis_title='Median Cycle Time (hours)'
+)
+save_chart(fig, 'ct_01b_cycle_time_trend_median')
 
 
 # --- Cycle Time Distribution ---
@@ -839,7 +884,7 @@ df_size_ct['avg_cycle_time_days'] = df_size_ct['avg_cycle_time_days'].astype(flo
 fig = go.Figure()
 fig.add_trace(go.Bar(
     x=df_size_ct['size_bucket'], y=df_size_ct['avg_cycle_time_days'],
-    marker_color=['#2E86AB', '#457B9D', '#81B29A', '#E07A5F', '#D62828'],
+    marker_color='steelblue',
     text=[f"{d:.1f}d\n(n={n:,})" for d, n in zip(df_size_ct['avg_cycle_time_days'], df_size_ct['prs'])],
     textposition='outside'
 ))
@@ -849,6 +894,242 @@ fig.update_layout(
     yaxis=dict(range=[0, df_size_ct['avg_cycle_time_days'].max() * 1.3])
 )
 save_chart(fig, 'ct_05_pr_size_vs_cycle_time')
+
+# --- PR Size Distribution ---
+print("\n14b. PR Size Distribution")
+
+df_size_dist = run_query("""
+SELECT
+  CASE
+    WHEN additions + deletions <= 50 THEN '1. XS (≤50)'
+    WHEN additions + deletions <= 100 THEN '2. S (51-100)'
+    WHEN additions + deletions <= 200 THEN '3. M (101-200)'
+    WHEN additions + deletions <= 400 THEN '4. L (201-400)'
+    ELSE '5. XL (>400)'
+  END as size_bucket,
+  COUNT(*) as prs
+FROM RAW_MISC.SWARMIA_PULL_REQUESTS
+WHERE pr_status = 'MERGED'
+  AND is_excluded = FALSE
+  AND additions IS NOT NULL
+  AND github_created_at >= DATEADD('month', -12, DATE_TRUNC('month', CURRENT_DATE))
+  AND DATE_TRUNC('month', github_created_at) < DATE_TRUNC('month', CURRENT_DATE)
+GROUP BY 1
+ORDER BY 1
+""")
+
+df_size_dist['prs'] = df_size_dist['prs'].astype(int)
+total = df_size_dist['prs'].sum()
+df_size_dist['pct'] = (df_size_dist['prs'] / total * 100).round(1)
+df_size_dist['cumulative_pct'] = df_size_dist['pct'].cumsum()
+
+fig = make_subplots(specs=[[{"secondary_y": True}]])
+fig.add_trace(go.Bar(x=df_size_dist['size_bucket'], y=df_size_dist['pct'],
+    name='% of PRs', marker_color='steelblue',
+    text=[f'{x:.0f}%' for x in df_size_dist['pct']], textposition='outside'), secondary_y=False)
+fig.add_trace(go.Scatter(x=df_size_dist['size_bucket'], y=df_size_dist['cumulative_pct'],
+    name='Cumulative %', mode='lines+markers', line=dict(color='darkgray')), secondary_y=True)
+fig.update_layout(title='PR Size Distribution (Last 12 Months)', xaxis_title='PR Size (lines changed)')
+fig.update_yaxes(title_text='% of PRs', secondary_y=False, range=[0, df_size_dist['pct'].max() * 1.3])
+fig.update_yaxes(title_text='Cumulative %', secondary_y=True, range=[0, 105])
+save_chart(fig, 'ct_07_pr_size_distribution')
+
+# --- Outlier Breakdown Comparison ---
+print("\n15. Outlier Breakdown Comparison")
+
+df_outlier_breakdown = run_query("""
+SELECT
+  CASE
+    WHEN cycle_time_seconds <= 86400 THEN '1. Fast (≤1 day)'
+    WHEN cycle_time_seconds <= 86400 * 7 THEN '2. Normal (1-7 days)'
+    WHEN cycle_time_seconds <= 86400 * 14 THEN '3. Slow (1-2 weeks)'
+    ELSE '4. Outlier (>2 weeks)'
+  END as pr_category,
+  ROUND(AVG(progress_time_seconds) / 3600.0, 1) as avg_progress_hours,
+  ROUND(AVG(review_time_seconds) / 3600.0, 1) as avg_review_hours,
+  ROUND(AVG(merge_time_seconds) / 3600.0, 1) as avg_merge_hours
+FROM RAW_MISC.SWARMIA_PULL_REQUESTS
+WHERE pr_status = 'MERGED'
+  AND is_excluded = FALSE
+  AND cycle_time_seconds IS NOT NULL
+  AND github_created_at >= DATEADD('month', -12, DATE_TRUNC('month', CURRENT_DATE))
+  AND DATE_TRUNC('month', github_created_at) < DATE_TRUNC('month', CURRENT_DATE)
+GROUP BY 1
+ORDER BY 1
+""")
+
+categories = df_outlier_breakdown['pr_category'].tolist()
+progress = df_outlier_breakdown['avg_progress_hours'].astype(float).tolist()
+review = df_outlier_breakdown['avg_review_hours'].astype(float).tolist()
+merge = df_outlier_breakdown['avg_merge_hours'].astype(float).tolist()
+
+# Calculate percentages
+totals = [p + r + m for p, r, m in zip(progress, review, merge)]
+progress_pct = [p/t*100 if t > 0 else 0 for p, t in zip(progress, totals)]
+review_pct = [r/t*100 if t > 0 else 0 for r, t in zip(review, totals)]
+merge_pct = [m/t*100 if t > 0 else 0 for m, t in zip(merge, totals)]
+
+fig = go.Figure()
+fig.add_trace(go.Bar(name='Progress', x=categories, y=progress_pct, marker_color='#2E86AB'))
+fig.add_trace(go.Bar(name='Review', x=categories, y=review_pct, marker_color='#E07A5F'))
+fig.add_trace(go.Bar(name='Merge', x=categories, y=merge_pct, marker_color='#81B29A'))
+
+fig.update_layout(
+    barmode='stack',
+    title='Cycle Time Breakdown by PR Speed Category',
+    yaxis_title='% of Cycle Time',
+    xaxis_title='',
+    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='center', x=0.5)
+)
+save_chart(fig, 'ct_06_outlier_breakdown')
+
+# --- Review Time by Area ---
+print("\n16. Review Time by Area")
+
+df_review_area = run_query(f"""
+SELECT
+  CASE
+    {' '.join([f"WHEN ARRAY_CONTAINS('{area}'::VARIANT, owner_team_names) THEN '{area}'" for area in TRACKED_AREAS])}
+    ELSE 'Other'
+  END as area,
+  ROUND(AVG(review_time_seconds) / 3600.0, 1) as avg_review_hours
+FROM RAW_MISC.SWARMIA_PULL_REQUESTS
+WHERE pr_status = 'MERGED'
+  AND is_excluded = FALSE
+  AND review_time_seconds IS NOT NULL
+  AND github_created_at >= DATEADD('month', -12, DATE_TRUNC('month', CURRENT_DATE))
+  AND DATE_TRUNC('month', github_created_at) < DATE_TRUNC('month', CURRENT_DATE)
+GROUP BY 1
+HAVING area != 'Other'
+ORDER BY 2
+""")
+
+df_review_area['avg_review_hours'] = df_review_area['avg_review_hours'].astype(float)
+
+fig = go.Figure()
+fig.add_trace(go.Bar(
+    x=df_review_area['area'], y=df_review_area['avg_review_hours'],
+    marker_color='steelblue',
+    text=[f"{h:.0f}h" for h in df_review_area['avg_review_hours']],
+    textposition='outside'
+))
+fig.update_layout(
+    title='Average Review Time by Area',
+    xaxis_title='', yaxis_title='Average Review Time (hours)',
+    yaxis=dict(range=[0, df_review_area['avg_review_hours'].max() * 1.2])
+)
+save_chart(fig, 'ct_08_review_time_by_area')
+
+# --- Review Time by Day of Week ---
+print("\n17. Review Time by Day of Week")
+
+df_review_day = run_query("""
+SELECT
+  DAYOFWEEK(first_review_request_at) as day_num,
+  ROUND(AVG(review_time_seconds) / 3600.0, 1) as avg_review_hours
+FROM RAW_MISC.SWARMIA_PULL_REQUESTS
+WHERE pr_status = 'MERGED'
+  AND is_excluded = FALSE
+  AND review_time_seconds IS NOT NULL
+  AND first_review_request_at IS NOT NULL
+  AND github_created_at >= DATEADD('month', -12, DATE_TRUNC('month', CURRENT_DATE))
+  AND DATE_TRUNC('month', github_created_at) < DATE_TRUNC('month', CURRENT_DATE)
+GROUP BY 1
+ORDER BY 1
+""")
+
+day_names = {0: 'Mon', 1: 'Tue', 2: 'Wed', 3: 'Thu', 4: 'Fri', 5: 'Sat', 6: 'Sun'}
+df_review_day['day_name'] = df_review_day['day_num'].map(day_names)
+df_review_day['avg_review_hours'] = df_review_day['avg_review_hours'].astype(float)
+# Filter to weekdays only
+df_review_day = df_review_day[df_review_day['day_num'] <= 4]
+
+fig = go.Figure()
+fig.add_trace(go.Bar(
+    x=df_review_day['day_name'], y=df_review_day['avg_review_hours'],
+    marker_color='steelblue',
+    text=[f"{h:.0f}h" for h in df_review_day['avg_review_hours']],
+    textposition='outside'
+))
+fig.update_layout(
+    title='Average Review Time by Day of Week',
+    xaxis_title='Day Review Requested', yaxis_title='Average Review Time (hours)',
+    yaxis=dict(range=[0, df_review_day['avg_review_hours'].max() * 1.2])
+)
+save_chart(fig, 'ct_09_review_time_by_day')
+
+# --- Review Time: Waiting vs Iteration ---
+print("\n18. Review Time: Waiting vs Iteration")
+
+df_review_breakdown = run_query("""
+SELECT
+  ROUND(AVG(DATEDIFF('second', first_review_request_at, first_reviewed_at)) / 3600.0, 1) as avg_time_to_first_review_hours,
+  ROUND(AVG(review_time_seconds) / 3600.0, 1) as avg_total_review_hours
+FROM RAW_MISC.SWARMIA_PULL_REQUESTS
+WHERE pr_status = 'MERGED'
+  AND is_excluded = FALSE
+  AND review_time_seconds IS NOT NULL
+  AND first_review_request_at IS NOT NULL
+  AND first_reviewed_at IS NOT NULL
+  AND github_created_at >= DATEADD('month', -12, DATE_TRUNC('month', CURRENT_DATE))
+  AND DATE_TRUNC('month', github_created_at) < DATE_TRUNC('month', CURRENT_DATE)
+""")
+
+waiting = float(df_review_breakdown['avg_time_to_first_review_hours'].iloc[0])
+total_review = float(df_review_breakdown['avg_total_review_hours'].iloc[0])
+iteration = total_review - waiting
+
+labels = ['Waiting for First Review', 'Review Iteration']
+values = [waiting, iteration]
+colors = ['#E07A5F', '#81B29A']
+
+fig = go.Figure(data=[go.Pie(
+    labels=labels, values=values, hole=.4,
+    marker_colors=colors, textinfo='label+percent',
+    textposition='outside'
+)])
+fig.update_layout(title='Review Time Breakdown: Waiting vs Iteration', showlegend=True)
+save_chart(fig, 'ct_11_review_waiting_vs_iteration')
+
+# --- Review Time Trend (Avg and Median) ---
+print("\n19. Review Time Trend")
+
+df_review_trend = run_query("""
+SELECT
+  DATE_TRUNC('month', github_created_at)::DATE as month,
+  ROUND(AVG(review_time_seconds) / 3600.0, 1) as avg_review_hours,
+  ROUND(MEDIAN(review_time_seconds) / 3600.0, 1) as median_review_hours
+FROM RAW_MISC.SWARMIA_PULL_REQUESTS
+WHERE pr_status = 'MERGED'
+  AND is_excluded = FALSE
+  AND review_time_seconds IS NOT NULL
+  AND github_created_at >= '2024-01-01'
+  AND DATE_TRUNC('month', github_created_at) < DATE_TRUNC('month', CURRENT_DATE)
+GROUP BY 1
+ORDER BY 1
+""")
+
+df_review_trend['month'] = pd.to_datetime(df_review_trend['month'])
+df_review_trend['avg_review_hours'] = df_review_trend['avg_review_hours'].astype(float)
+df_review_trend['median_review_hours'] = df_review_trend['median_review_hours'].astype(float)
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(
+    x=df_review_trend['month'], y=df_review_trend['avg_review_hours'],
+    mode='lines+markers', name='Average',
+    line=dict(color='steelblue', width=2)
+))
+fig.add_trace(go.Scatter(
+    x=df_review_trend['month'], y=df_review_trend['median_review_hours'],
+    mode='lines+markers', name='Median',
+    line=dict(color='darkblue', width=2)
+))
+fig.update_layout(
+    title='Review Time Trend (Average vs Median)',
+    xaxis_title='Month', yaxis_title='Review Time (hours)',
+    legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
+)
+save_chart(fig, 'ct_10_review_time_trend')
 
 print("\n=== CYCLE TIME CHARTS COMPLETE ===")
 

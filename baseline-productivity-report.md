@@ -45,7 +45,7 @@ This report focuses on the latter. The goal is transparency about organizational
 
 ![PR Throughput Raw vs Normalized](charts/pt_01_throughput_raw_vs_normalized.png)
 
-**Key takeaway**: Raw throughput is growing (+23% YoY), but per-contributor throughput is flat. Growth is from hiring, not increased individual productivity.
+**Key takeaway**: Raw throughput has nearly doubled in 2 years, but per-contributor throughput is flat. Growth is from hiring, not increased individual productivity.
 
 | Metric | Jan 2024 | Jan 2025 | Jan 2026 | YoY Change |
 |--------|----------|----------|----------|------------|
@@ -57,7 +57,7 @@ This report focuses on the latter. The goal is transparency about organizational
 
 ![PRs per Contributor by Area Trend](charts/pt_02_prs_per_contributor_by_area_trend.png)
 
-Throughput per contributor varies by area, likely reflecting differences in work patterns rather than performance. Infrastructure-focused teams tend toward many small changes; product teams toward fewer, larger ones.
+Throughput per contributor varies by area due to various reasons including nature of work and domain.
 
 ![Average Monthly PRs per Contributor by Area](charts/pt_03_area_comparison_6mo.png)
 
@@ -74,7 +74,144 @@ Throughput per contributor varies by area, likely reflecting differences in work
    - Is cycle time improving?
    - Where is AI-saved time being reallocated?
 
+### Throughput vs Batch Size
+
+> Do areas with lower throughput ship larger PRs? If so, comparing raw PR counts may be misleading.
+
+*TODO: Correlate PRs/contributor with average PR size by area. Some areas may ship fewer but larger changes.*
+
 *Analysis: `notebooks/pr_throughput.ipynb`*
+
+
+## Understanding Where Work Gets Stuck
+
+### Cycle Time
+
+> The total time a pull request spends in all stages of the development pipeline. Similar to change lead time but doesn't include time to deploy.
+
+Cycle time is the sum of three components:
+
+- **Time in progress** — from the first commit (or PR opened) to the first review request
+- **Time in review** — from the first review request to final approval
+- **Time to merge** — from final approval to merged
+
+![Cycle Time Components](charts/ct_00_cycle_time_definition.png)
+
+### 12-Month Baseline
+
+*Benchmarks: Great < 24 hours, Good < 5 days, Needs Attention ≥ 5 days*
+
+| Metric | Value | Benchmark |
+|--------|-------|-----------|
+| Average cycle time | 2.9 days | Good |
+| Median cycle time | ~1 hour | Great |
+
+Average cycle time is ~3 days, but median is under 1 hour. The typical PR (median) is in the "Great" tier—but outliers pull the average down to "Good".
+
+![Cycle Time Distribution](charts/ct_02_cycle_time_distribution.png)
+
+| Speed Category | % of PRs | Avg Cycle Time |
+|----------------|----------|----------------|
+| Fast (≤1 day) | 74% | 3 hours |
+| Normal (1-7 days) | 17% | 3.3 days |
+| Slow (1-2 weeks) | 4% | 10 days |
+| Outlier (>2 weeks) | 5% | 37 days |
+
+### Trend
+
+![Cycle Time Trend](charts/ct_01b_cycle_time_trend_median.png)
+
+Cycle time has remained stable despite the team nearly doubling in 2 years. We've scaled without slowing down.
+
+### Cycle Time Breakdown
+
+> Breaking cycle time into stages reveals exactly where work gets stuck.
+
+![Cycle Time Breakdown](charts/ct_03_cycle_time_breakdown_pie.png)
+
+| Phase | Average Hours | % of Total |
+|-------|---------------|------------|
+| Progress (coding) | 31h (1.3d) | 37% |
+| Review | 40h (1.7d) | 47% |
+| Merge | 14h | 17% |
+| **Total** | **85h (3.5d)** | 100% |
+
+**Key insight**: Review is the biggest phase at 47% of cycle time. This includes both waiting time (for first review, for re-reviews) and actual review work. Given that time to first review alone averages 17 hours, a significant portion of this phase is waiting, not active feedback.
+
+### Review Time Deep Dive
+
+![Review Time Trend](charts/ct_10_review_time_trend.png)
+
+Average review time is ~40h (1.7 days), median is ~1 hour. Like cycle time, outliers pull up the average.
+
+**Trend**: Review time has been declining over the past year. This may be related to AI-assisted review tools we've been investing in—worth investigating further in the AI section.
+
+![Review Time: Waiting vs Iteration](charts/ct_11_review_waiting_vs_iteration.png)
+
+**Waiting vs Iteration**: Of the 40h average, 42% is waiting for first review (~17h) and 58% is actual review iteration (~23h). Review time isn't purely a "waiting" problem—most of it is legitimate back-and-forth.
+
+#### By Area
+
+![Review Time by Area](charts/ct_08_review_time_by_area.png)
+
+Player takes 3.5x longer than Data in review.
+
+#### By Day of Week
+
+![Review Time by Day](charts/ct_09_review_time_by_day.png)
+
+PRs requested on Friday take longer—they sit over the weekend.
+
+### What Makes Outliers Different?
+
+![Outlier Breakdown](charts/ct_06_outlier_breakdown.png)
+
+Outliers aren't stuck in review—they're stuck in progress. Fast PRs spend most of their time waiting for review (60%). Outliers spend nearly half their time in the coding phase itself (46%).
+
+#### Understanding Outliers Better
+
+> We know outliers are bigger PRs stuck in progress. But why are they big? What can we do about it?
+
+*TODO: Deeper analysis to understand outlier patterns:*
+- *By team/area: Which teams have the highest outlier rates?*
+- *By work type: Are outliers features, refactors, migrations, or bug fixes?*
+- *By author tenure: Do new joiners create more outliers?*
+- *By repo/codebase: Are certain parts of the codebase prone to large PRs?*
+- *Cost analysis: How much eng-time is tied up in outliers?*
+
+### Batch Size (PR Size)
+
+![PR Size Distribution](charts/ct_07_pr_size_distribution.png)
+
+Two-thirds of PRs are small (≤50 lines). 12% are large (>400 lines).
+
+![PR Size vs Cycle Time](charts/ct_05_pr_size_vs_cycle_time.png)
+
+Larger PRs take longer—XL PRs (>400 lines) average 8.6 days vs 1.6 days for XS (≤50 lines). This connects the dots: outliers are stuck in progress because they're bigger.
+
+### Build Time and CI Feedback Speed
+
+> If your CI pipeline takes 30 minutes and developers run it 5 times a day, that's 2.5 hours of waiting per person per day.
+
+*Data not yet available - requires CI/CD pipeline instrumentation.*
+
+### Insights
+
+1. **Most PRs are fast** - 74% merge within a day, 66% complete review in <4 hours. The "typical developer experience" is quick iteration.
+
+2. **Outliers drive the average** - 5% of PRs take >2 weeks and account for most of the average cycle time. Reducing outliers would have outsized impact.
+
+3. **Outliers are bigger, not stuck differently** - They're 7x larger and slow in every phase. This suggests the fix is smaller PRs, not process changes.
+
+4. **Review time is 38% waiting, 62% iteration** - Review isn't purely a "pickup" problem. Most review time is legitimate back-and-forth, though the 15h average wait for first review is still significant.
+
+5. **PR size is the biggest lever** - Large PRs take 4.5x longer in review and 2.5x longer overall. Two-thirds of PRs are already small (≤50 lines) - the opportunity is converting the 11% that are XL.
+
+6. **Friday effect is real** - PRs requested on Friday take 60% longer (50h vs 31h). Consider not requesting reviews late Friday.
+
+7. **Area variation is significant** - Player takes 3.5x longer than Data in review (63h vs 18h). Worth investigating what Data does differently.
+
+*Analysis: `notebooks/cycle_time.ipynb`*
 
 
 ## Software Delivery Performance
@@ -83,9 +220,16 @@ Throughput per contributor varies by area, likely reflecting differences in work
 
 ### Areas Covered
 
-This section covers **Player, Sports, Social, and Platform** - the four areas where we can reliably identify production deployments via deployment environment patterns in Swarmia.
+This section covers **Player, Sports, Social, and Platform**, the four areas where we can reliably identify production deployments in Swarmia today.
 
-**Not included**: Core Experience, Data, and Gaming. These areas don't have consistent deployment environment naming that allows us to filter to production deployments. They're included in PR-based metrics (throughput, cycle time) but excluded from deployment metrics. We're working on getting their deployment data and should have it soon.
+| Area | What's Included |
+|------|-----------------|
+| Player | Production app deployments |
+| Sports | Monorepo deployments (~70% of services) |
+| Social | Backend production deployments |
+| Platform | Monorepo deployments (tools & infrastructure) |
+
+**Not included**: Core Experience, Data, and Gaming don't have consistent deployment tracking yet. They're included in PR-based metrics (throughput, cycle time) but excluded here. We're working on getting their deployment data and should have it soon.
 
 ### Deployment Frequency
 
@@ -163,6 +307,12 @@ Deployment frequency varies significantly by area. Platform has the highest conc
 
 Most deployments are single-PR, and these deploy faster than multi-PR batches.
 
+#### By Change Type
+
+> Do bug fixes deploy faster than new features? Understanding TTD by change type could reveal whether urgency or complexity drives deployment speed.
+
+*TODO: Categorize deployments by type (bug fix, feature, refactor, etc.) if PR labels or commit conventions allow. Analyze TTD differences.*
+
 ### Insights
 
 1. **No teams at elite cadence** - Even top performers deploy 2-3x/week, not daily. This suggests deployment processes still have friction.
@@ -185,200 +335,6 @@ The following stability metrics are not included in this baseline:
 These require incident data integration and will be added in a future iteration.
 
 *Analysis: `notebooks/software_delivery.ipynb`*
-
-
-## Understanding Where Work Gets Stuck
-
-> These metrics help identify productivity bottlenecks. As a leader, use them in aggregate to monitor patterns across teams.
-
-### Cycle Time
-
-> The total time a pull request spends in all stages of the development pipeline. Similar to change lead time but doesn't include time to deploy.
-
-![Cycle Time Trend](charts/ct_01_cycle_time_trend.png)
-
-**Key takeaway**: Average cycle time is ~3 days, but median is under 1 hour. This gap tells an important story: most PRs are fast, but a small percentage of outliers take weeks and pull up the average significantly.
-
-**Scaling without slowing down**: Despite throughput growing ~23% YoY (from hiring), cycle time has remained stable or slightly improved. This is notable - many organizations see velocity degrade as they scale due to increased coordination overhead, more complex codebases, and slower decision-making. The fact that we've maintained speed while growing suggests healthy engineering practices that scale.
-
-| Metric | 12-Month Baseline |
-|--------|-------------------|
-| Average cycle time | 2.9 days |
-| Median cycle time | ~1 hour |
-
-![Cycle Time Distribution](charts/ct_02_cycle_time_distribution.png)
-
-**The outlier story**: 74% of PRs merge within 1 day. But 5% take more than 2 weeks - these outliers are what drive the average up to nearly 3 days.
-
-| Speed Category | % of PRs | Avg Cycle Time |
-|----------------|----------|----------------|
-| Fast (≤1 day) | 74% | 4 hours |
-| Normal (1-7 days) | 17% | 3.7 days |
-| Slow (1-2 weeks) | 4% | 11.5 days |
-| Outlier (>2 weeks) | 5% | 41 days |
-
-### Cycle Time Breakdown
-
-> Breaking cycle time into stages reveals exactly where work gets stuck.
-
-![Cycle Time Breakdown](charts/ct_03_cycle_time_breakdown_pie.png)
-
-| Phase | Average Hours | % of Total |
-|-------|---------------|------------|
-| Progress (coding) | 31h (1.3d) | 37% |
-| Review | 40h (1.7d) | 47% |
-| Merge | 14h | 17% |
-| **Total** | **85h (3.5d)** | 100% |
-
-**Key insight**: Review is the biggest phase at 47% of cycle time. This includes both waiting time (for first review, for re-reviews) and actual review work. Given that time to first review alone averages 19 hours, a significant portion of this phase is waiting, not active feedback.
-
-#### What Makes Outliers Different?
-
-*Note: Fast PRs vs Outliers comparison available in notebook.*
-
-Outliers don't have a different *pattern* of where time goes - they just take longer in every phase. The percentage breakdown is similar across fast and slow PRs.
-
-| Phase | Fast PRs | Outliers | Multiplier |
-|-------|----------|----------|------------|
-| Progress | 0.6h | 452h (18.8d) | 750x |
-| Review | 2.5h | 387h (16.1d) | 155x |
-| Merge | 1.1h | 142h (5.9d) | 129x |
-
-**What characterizes outliers**:
-- They're **15x larger** (169 vs 11 lines median) - averages are skewed by huge PRs
-- They take longer in *every* phase, not just one
-- This suggests PR characteristics (size, complexity) matter more than process bottlenecks
-
-#### Outlier Rate by Area
-
-![Outlier Rate by Area](charts/ct_04_outlier_rate_by_area.png)
-
-| Area | Outlier Rate |
-|------|--------------|
-| Player | 9.5% |
-| Sports | 6.5% |
-| Social | 5.8% |
-| Gaming | 5.4% |
-| Core Experience | 4.7% |
-| Data | 3.8% |
-| Platform | 2.3% |
-
-*Org-wide average: ~5%*
-
-### Batch Size (PR Size)
-
-> The number of lines changed (added + deleted) in a pull request. Smaller changes get reviewed faster and more thoroughly.
-
-![PR Size vs Cycle Time](charts/ct_05_pr_size_vs_cycle_time.png)
-
-| Metric | 12-Month Baseline |
-|--------|-------------------|
-| Median PR size | 16 lines |
-| Average PR size | ~1,100 lines |
-| % Large PRs (>400 lines) | 11.5% |
-
-**PR Size Distribution**:
-
-| Size | % of PRs |
-|------|----------|
-| XS (≤50 lines) | 66% |
-| S (51-100) | 9% |
-| M (101-200) | 7% |
-| L (201-400) | 7% |
-| XL (>400) | 11% |
-
-The 16-line median makes sense: **two-thirds of PRs are ≤50 lines**. This is healthy - small, focused changes are the norm.
-
-**Benchmark**: Industry recommendation is <400 lines per PR. Only 11.5% of PRs exceed this threshold.
-
-**Correlation with cycle time**: Larger PRs take significantly longer to merge.
-
-| PR Size | Avg Cycle Time |
-|---------|----------------|
-| XS (≤50 lines) | ~2 days |
-| S (51-100) | ~2.5 days |
-| M (101-200) | ~3 days |
-| L (201-400) | ~3.5 days |
-| XL (>400) | ~5 days |
-
-### Review Time Deep Dive
-
-> The review phase (review requested → approved) makes up 47% of cycle time. Let's break it down.
-
-**[CHART: Review Time Distribution]**
-
-| Metric | 12-Month Baseline |
-|--------|-------------------|
-| Average review time | 40h (1.7d) |
-| % completing review in <4h | 66% |
-| % taking >2 days | 15% |
-
-**Waiting vs Iteration**: Of the 40h (1.7d) average review time:
-- **38%** is waiting for first review (~15h)
-- **62%** is actual review and iteration (~25h)
-
-This means review time isn't purely a "waiting" problem - most of it is legitimate back-and-forth.
-
-#### By Area
-
-| Area | Avg Review Time | Notes |
-|------|-----------------|-------|
-| Data | 18h | Fastest |
-| Platform | 24h (1d) | |
-| Core Experience | 32h (1.3d) | |
-| Gaming | 38h (1.6d) | |
-| Sports | 42h (1.8d) | |
-| Social | 48h (2d) | |
-| Player | 63h (2.6d) | Slowest (3.5x Data) |
-
-#### By PR Size
-
-| PR Size | Avg Review Time |
-|---------|-----------------|
-| XS (≤50 lines) | 20h |
-| S (51-100) | 28h (1.2d) |
-| M (101-200) | 38h (1.6d) |
-| L (201-400) | 52h (2.2d) |
-| XL (>400) | 91h (3.8d) |
-
-Large PRs take **4.5x longer** in review than small PRs.
-
-#### By Day of Week
-
-| Day | Avg Review Time |
-|-----|-----------------|
-| Sunday | 31h (1.3d) |
-| Monday | 35h (1.5d) |
-| Tuesday | 34h (1.4d) |
-| Wednesday | 36h (1.5d) |
-| Thursday | 40h (1.7d) |
-| Friday | 50h (2.1d) |
-
-**Friday effect confirmed**: PRs requested on Friday take 60% longer - they sit over the weekend.
-
-### Build Time and CI Feedback Speed
-
-> If your CI pipeline takes 30 minutes and developers run it 5 times a day, that's 2.5 hours of waiting per person per day.
-
-*Data not yet available - requires CI/CD pipeline instrumentation.*
-
-### Insights
-
-1. **Most PRs are fast** - 74% merge within a day, 66% complete review in <4 hours. The "typical developer experience" is quick iteration.
-
-2. **Outliers drive the average** - 5% of PRs take >2 weeks and account for most of the average cycle time. Reducing outliers would have outsized impact.
-
-3. **Outliers are bigger, not stuck differently** - They're 7x larger and slow in every phase. This suggests the fix is smaller PRs, not process changes.
-
-4. **Review time is 38% waiting, 62% iteration** - Review isn't purely a "pickup" problem. Most review time is legitimate back-and-forth, though the 15h average wait for first review is still significant.
-
-5. **PR size is the biggest lever** - Large PRs take 4.5x longer in review and 2.5x longer overall. Two-thirds of PRs are already small (≤50 lines) - the opportunity is converting the 11% that are XL.
-
-6. **Friday effect is real** - PRs requested on Friday take 60% longer (50h vs 31h). Consider not requesting reviews late Friday.
-
-7. **Area variation is significant** - Player takes 3.5x longer than Data in review (63h vs 18h). Worth investigating what Data does differently.
-
-*Analysis: `notebooks/cycle_time.ipynb`*
 
 
 ## Understanding Where Engineering Effort Goes
@@ -423,6 +379,7 @@ Large PRs take **4.5x longer** in review than small PRs.
 > **Important caveat**: If AI-assisted PRs have shorter cycle times, that might mean AI genuinely helps, OR your most experienced engineers are the keenest adopters, OR teams with strong fundamentals are both faster and more likely to experiment. Each explanation suggests different actions.
 
 - Adoption rates by Area/Tribe/Squad
+- Adoption overlays
 - Metrics comparison: AI-assisted vs non-AI-assisted
   - Cycle time
   - Batch size
@@ -430,6 +387,14 @@ Large PRs take **4.5x longer** in review than small PRs.
 - Survey results (CSAT, self reported time savings, time saved on non-dev tasks, friction)
 - Key findings (with appropriate caveats)
 - Hypotheses to test
+    - Major model improvements lead to step-change improvements (e.g. Opus 4.5)
+        - More adoption
+        - More productivity
+    - Broad, supported adoption on Claude (vs before: shadow AI on fragmented, less capable tools)
+    - Impact of workshops on adoption & productivity
+        - More adoption after workshops
+        - People in workshops have higher throughput? ("workshop effect")
+    - Correlating throughput with AI adoption
     - No longer have this effect where people try and stop using (usage sticks)
     - Product is starting to write more code
     - Is the proportion of employees merging code increasing with AI?
@@ -438,10 +403,11 @@ Large PRs take **4.5x longer** in review than small PRs.
     - We can service more demand (e.g. investment balances)
     - We are not paying a big quality price (review time, batch size, WIP)
     - PR throughput vs commits - are we pushing more directly?
-    - How does PR throughput compare to batch sizes 
+    - How does PR throughput compare to batch sizes
     - Are we becoming more or less dependent on key contributors?
         - Is AI: democratizing output (more people contributing meaningfully) *or* amplifying existing patterns (top contributors just do even more)
-        - Gini coefficient of PR distribution or % of PRs from top 10% contributors over time.
+        - Gini coefficient of PR distribution or % of PRs from top 10% contributors over time
+    - Show cost: spending X amount per hour saved on review time
 
 
 ## Comparative Scorecard
