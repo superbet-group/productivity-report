@@ -1209,7 +1209,460 @@ fig.update_layout(
 )
 save_chart(fig, 'ct_10_review_time_trend')
 
-print("\n=== CYCLE TIME CHARTS COMPLETE ===")
+# --- Reviewer Count by Area ---
+print("\n20. Reviewer Count by Area")
+
+df_reviewer_count = run_query(f"""
+WITH pr_review_counts AS (
+  SELECT
+    r.pull_request_id,
+    COUNT(DISTINCT r.author_id) as reviewer_count
+  FROM RAW_MISC.SWARMIA_PULL_REQUEST_REVIEWS r
+  GROUP BY 1
+),
+pr_with_area AS (
+  SELECT
+    pr.id as pr_id,
+    f.value::string as area,
+    pr.review_time_seconds
+  FROM RAW_MISC.SWARMIA_PULL_REQUESTS pr,
+  LATERAL FLATTEN(input => pr.owner_team_names) f
+  WHERE pr.pr_status = 'MERGED'
+    AND pr.is_excluded = FALSE
+    AND f.value::string IN {tuple(ALL_AREAS)}
+    AND pr.github_created_at >= DATEADD('month', -12, CURRENT_DATE)
+)
+SELECT
+  pwa.area,
+  COUNT(*) as prs,
+  ROUND(AVG(COALESCE(rc.reviewer_count, 0)), 2) as avg_reviewers,
+  ROUND(100.0 * SUM(CASE WHEN COALESCE(rc.reviewer_count, 0) = 1 THEN 1 ELSE 0 END) / COUNT(*), 1) as pct_single_reviewer
+FROM pr_with_area pwa
+LEFT JOIN pr_review_counts rc ON pwa.pr_id = rc.pull_request_id
+GROUP BY 1
+ORDER BY avg_reviewers
+""")
+
+df_reviewer_count['avg_reviewers'] = df_reviewer_count['avg_reviewers'].astype(float)
+df_reviewer_count['pct_single_reviewer'] = df_reviewer_count['pct_single_reviewer'].astype(float)
+
+fig = make_subplots(rows=1, cols=2, subplot_titles=('Average Reviewers per PR', '% Single-Reviewer PRs'))
+
+fig.add_trace(
+    go.Bar(x=df_reviewer_count['area'], y=df_reviewer_count['avg_reviewers'],
+           marker_color='steelblue',
+           text=[f'{x:.2f}' for x in df_reviewer_count['avg_reviewers']], textposition='outside'),
+    row=1, col=1
+)
+
+fig.add_trace(
+    go.Bar(x=df_reviewer_count['area'], y=df_reviewer_count['pct_single_reviewer'],
+           marker_color='#2ca02c',
+           text=[f'{x:.0f}%' for x in df_reviewer_count['pct_single_reviewer']], textposition='outside'),
+    row=1, col=2
+)
+
+fig.update_layout(
+    title='Review Concentration by Area: Reviewers per PR',
+    height=450, width=1000,
+    showlegend=False
+)
+fig.update_yaxes(title_text='Avg Reviewers', row=1, col=1, range=[0, df_reviewer_count['avg_reviewers'].max() * 1.25])
+fig.update_yaxes(title_text='% Single Reviewer', row=1, col=2, range=[0, 100])
+
+save_chart(fig, 'ct_12_reviewer_count_by_area', width=1000)
+
+
+# --- PR Size Distribution by Area ---
+print("\n21. PR Size Distribution by Area")
+
+df_size_by_area = run_query(f"""
+WITH pr_with_area AS (
+  SELECT
+    f.value::string as area,
+    pr.additions + pr.deletions as lines,
+    CASE
+      WHEN pr.additions + pr.deletions <= 50 THEN 'XS'
+      WHEN pr.additions + pr.deletions <= 100 THEN 'S'
+      WHEN pr.additions + pr.deletions <= 200 THEN 'M'
+      WHEN pr.additions + pr.deletions <= 400 THEN 'L'
+      ELSE 'XL'
+    END as size_bucket
+  FROM RAW_MISC.SWARMIA_PULL_REQUESTS pr,
+  LATERAL FLATTEN(input => pr.owner_team_names) f
+  WHERE pr.pr_status = 'MERGED'
+    AND pr.is_excluded = FALSE
+    AND pr.additions IS NOT NULL
+    AND f.value::string IN {tuple(ALL_AREAS)}
+    AND pr.github_created_at >= DATEADD('month', -12, CURRENT_DATE)
+)
+SELECT
+  area,
+  COUNT(*) as prs,
+  ROUND(100.0 * SUM(CASE WHEN size_bucket = 'XL' THEN 1 ELSE 0 END) / COUNT(*), 1) as pct_xl
+FROM pr_with_area
+GROUP BY 1
+ORDER BY pct_xl DESC
+""")
+
+df_size_by_area['pct_xl'] = df_size_by_area['pct_xl'].astype(float)
+
+# Calculate org average for reference line
+org_avg_xl = df_size_by_area['pct_xl'].mean()
+
+fig = go.Figure()
+fig.add_trace(go.Bar(
+    x=df_size_by_area['area'], y=df_size_by_area['pct_xl'],
+    marker_color='steelblue',
+    text=[f'{x:.1f}%' for x in df_size_by_area['pct_xl']],
+    textposition='outside'
+))
+
+fig.add_hline(y=org_avg_xl, line_dash="dash", line_color="gray",
+              annotation_text=f"Org avg: {org_avg_xl:.1f}%")
+
+fig.update_layout(
+    title='% of XL PRs (>400 lines) by Area',
+    xaxis_title='Area',
+    yaxis_title='% XL PRs (>400 lines)',
+    yaxis=dict(range=[0, df_size_by_area['pct_xl'].max() * 1.25]),
+    showlegend=False
+)
+
+save_chart(fig, 'ct_13_pr_size_by_area')
+
+
+# =============================================================================
+# AREA-SPECIFIC DEEP DIVE CHARTS
+# =============================================================================
+
+print("\n=== AREA-SPECIFIC DEEP DIVE CHARTS ===")
+
+# --- Review Load Concentration ---
+print("\n22. Review Load Concentration by Area")
+
+df_review_load = run_query(f"""
+WITH area_reviews AS (
+    SELECT
+        f.value::string as area,
+        r.author_id as reviewer_id,
+        COUNT(*) as review_count
+    FROM RAW_MISC.SWARMIA_PULL_REQUEST_REVIEWS r
+    JOIN RAW_MISC.SWARMIA_PULL_REQUESTS pr ON r.pull_request_id = pr.id,
+    LATERAL FLATTEN(input => pr.owner_team_names) f
+    WHERE pr.pr_status = 'MERGED'
+        AND pr.is_excluded = FALSE
+        AND f.value::string IN {tuple(ALL_AREAS)}
+        AND pr.github_created_at >= DATEADD('month', -12, CURRENT_DATE)
+    GROUP BY 1, 2
+),
+area_totals AS (
+    SELECT area,
+        COUNT(*) as total_reviewers,
+        SUM(review_count) as total_reviews,
+        CEIL(COUNT(*) * 0.1) as top10_cutoff,
+        CEIL(COUNT(*) * 0.2) as top20_cutoff
+    FROM area_reviews
+    GROUP BY 1
+),
+ranked AS (
+    SELECT ar.area, ar.review_count,
+        ROW_NUMBER() OVER (PARTITION BY ar.area ORDER BY ar.review_count DESC) as rn,
+        at.total_reviewers, at.total_reviews, at.top10_cutoff, at.top20_cutoff
+    FROM area_reviews ar
+    JOIN area_totals at ON ar.area = at.area
+)
+SELECT
+    area,
+    MAX(total_reviewers) as total_reviewers,
+    MAX(total_reviews) as total_reviews,
+    ROUND(100.0 * SUM(CASE WHEN rn <= top10_cutoff THEN review_count ELSE 0 END) / MAX(total_reviews), 1) as top10_pct_reviews,
+    ROUND(100.0 * SUM(CASE WHEN rn <= top20_cutoff THEN review_count ELSE 0 END) / MAX(total_reviews), 1) as top20_pct_reviews
+FROM ranked
+GROUP BY area, top10_cutoff, top20_cutoff
+ORDER BY top10_pct_reviews DESC
+""")
+
+df_review_load['top10_pct_reviews'] = df_review_load['top10_pct_reviews'].astype(float)
+df_review_load['top20_pct_reviews'] = df_review_load['top20_pct_reviews'].astype(float)
+
+fig = go.Figure()
+fig.add_trace(go.Bar(
+    x=df_review_load['area'], y=df_review_load['top10_pct_reviews'],
+    name='Top 10% of reviewers', marker_color='#E07A5F',
+    text=[f'{x:.0f}%' for x in df_review_load['top10_pct_reviews']], textposition='outside'
+))
+fig.add_trace(go.Bar(
+    x=df_review_load['area'], y=df_review_load['top20_pct_reviews'],
+    name='Top 20% of reviewers', marker_color='#81B29A',
+    text=[f'{x:.0f}%' for x in df_review_load['top20_pct_reviews']], textposition='outside'
+))
+fig.update_layout(
+    title='Review Load Concentration: % of Reviews by Top Contributors',
+    xaxis_title='Area', yaxis_title='% of All Reviews',
+    barmode='group', yaxis=dict(range=[0, 100])
+)
+save_chart(fig, 'ct_14_review_load_concentration', width=1000)
+
+
+# --- Rework Rate ---
+print("\n23. Rework Rate by Area")
+
+df_rework = run_query(f"""
+WITH pr_with_area AS (
+    SELECT pr.id as pr_id, f.value::string as area
+    FROM RAW_MISC.SWARMIA_PULL_REQUESTS pr,
+    LATERAL FLATTEN(input => pr.owner_team_names) f
+    WHERE pr.pr_status = 'MERGED' AND pr.is_excluded = FALSE
+        AND f.value::string IN {tuple(ALL_AREAS)}
+        AND pr.github_created_at >= DATEADD('month', -12, CURRENT_DATE)
+),
+reviews_with_area AS (
+    SELECT pwa.area, r.state
+    FROM RAW_MISC.SWARMIA_PULL_REQUEST_REVIEWS r
+    JOIN pr_with_area pwa ON r.pull_request_id = pwa.pr_id
+)
+SELECT area,
+    COUNT(*) as total_reviews,
+    SUM(CASE WHEN state = 'changes_requested' THEN 1 ELSE 0 END) as changes_requested,
+    ROUND(100.0 * SUM(CASE WHEN state = 'changes_requested' THEN 1 ELSE 0 END) / COUNT(*), 1) as rework_rate
+FROM reviews_with_area
+GROUP BY 1
+ORDER BY rework_rate DESC
+""")
+
+df_rework['rework_rate'] = df_rework['rework_rate'].astype(float)
+org_avg_rework = df_rework['rework_rate'].mean()
+
+fig = go.Figure()
+fig.add_trace(go.Bar(
+    x=df_rework['area'], y=df_rework['rework_rate'],
+    marker_color=['#D62828' if x > 4 else '#E07A5F' if x > 3 else '#2E86AB' for x in df_rework['rework_rate']],
+    text=[f'{x:.1f}%' for x in df_rework['rework_rate']], textposition='outside'
+))
+fig.add_hline(y=org_avg_rework, line_dash="dash", line_color="gray",
+              annotation_text=f"Org avg: {org_avg_rework:.1f}%")
+fig.update_layout(
+    title='Rework Rate by Area (% of Reviews Requesting Changes)',
+    xaxis_title='Area', yaxis_title='% Changes Requested',
+    yaxis=dict(range=[0, df_rework['rework_rate'].max() * 1.3])
+)
+save_chart(fig, 'ct_15_rework_rate')
+
+
+# --- Contributor Concentration ---
+print("\n24. Contributor Concentration by Area")
+
+df_contrib = run_query(f"""
+WITH pr_by_area AS (
+    SELECT f.value::string as area, pr.author_id, COUNT(*) as pr_count
+    FROM RAW_MISC.SWARMIA_PULL_REQUESTS pr,
+    LATERAL FLATTEN(input => pr.owner_team_names) f
+    WHERE pr.pr_status = 'MERGED' AND pr.is_excluded = FALSE
+        AND f.value::string IN {tuple(ALL_AREAS)}
+        AND pr.github_created_at >= DATEADD('month', -12, CURRENT_DATE)
+    GROUP BY 1, 2
+),
+area_totals AS (
+    SELECT area, COUNT(*) as total_contributors, SUM(pr_count) as total_prs,
+        CEIL(COUNT(*) * 0.1) as top10_cutoff
+    FROM pr_by_area GROUP BY 1
+),
+ranked AS (
+    SELECT pa.area, pa.pr_count,
+        ROW_NUMBER() OVER (PARTITION BY pa.area ORDER BY pa.pr_count DESC) as rn,
+        at.total_prs, at.top10_cutoff
+    FROM pr_by_area pa
+    JOIN area_totals at ON pa.area = at.area
+)
+SELECT area, MAX(total_prs) as total_prs,
+    ROUND(100.0 * SUM(CASE WHEN rn <= top10_cutoff THEN pr_count ELSE 0 END) / MAX(total_prs), 1) as top10_pct_prs
+FROM ranked GROUP BY area, top10_cutoff ORDER BY top10_pct_prs DESC
+""")
+
+df_contrib['top10_pct_prs'] = df_contrib['top10_pct_prs'].astype(float)
+
+fig = go.Figure()
+fig.add_trace(go.Bar(
+    x=df_contrib['area'], y=df_contrib['top10_pct_prs'],
+    marker_color=['#D62828' if x > 35 else '#E07A5F' if x > 30 else '#2E86AB' for x in df_contrib['top10_pct_prs']],
+    text=[f'{x:.1f}%' for x in df_contrib['top10_pct_prs']], textposition='outside'
+))
+fig.add_hline(y=33, line_dash="dash", line_color="gray",
+              annotation_text="33% = balanced")
+fig.update_layout(
+    title='Contributor Concentration: % of PRs from Top 10% of Authors',
+    xaxis_title='Area', yaxis_title='% of PRs from Top 10%',
+    yaxis=dict(range=[0, df_contrib['top10_pct_prs'].max() * 1.25])
+)
+save_chart(fig, 'ct_16_contributor_concentration')
+
+
+# --- After-Hours Work ---
+print("\n25. After-Hours Work by Area")
+
+df_after_hours = run_query(f"""
+SELECT
+    f.value::string as area,
+    COUNT(*) as total_prs,
+    ROUND(100.0 * SUM(CASE WHEN HOUR(pr.github_created_at) < 9 OR HOUR(pr.github_created_at) >= 18
+             OR DAYOFWEEK(pr.github_created_at) IN (0, 6) THEN 1 ELSE 0 END) / COUNT(*), 1) as after_hours_pct
+FROM RAW_MISC.SWARMIA_PULL_REQUESTS pr,
+LATERAL FLATTEN(input => pr.owner_team_names) f
+WHERE pr.pr_status = 'MERGED' AND pr.is_excluded = FALSE
+    AND f.value::string IN {tuple(ALL_AREAS)}
+    AND pr.github_created_at >= DATEADD('month', -12, CURRENT_DATE)
+GROUP BY 1
+ORDER BY after_hours_pct DESC
+""")
+
+df_after_hours['after_hours_pct'] = df_after_hours['after_hours_pct'].astype(float)
+
+fig = go.Figure()
+fig.add_trace(go.Bar(
+    x=df_after_hours['area'], y=df_after_hours['after_hours_pct'],
+    marker_color=['#D62828' if x > 15 else '#E07A5F' if x > 10 else '#2E86AB'
+                  for x in df_after_hours['after_hours_pct']],
+    text=[f'{x:.1f}%' for x in df_after_hours['after_hours_pct']], textposition='outside'
+))
+fig.update_layout(
+    title='After-Hours Work by Area (PRs outside 9am-6pm or weekends)',
+    xaxis_title='Area', yaxis_title='% After-Hours PRs',
+    yaxis=dict(range=[0, df_after_hours['after_hours_pct'].max() * 1.25])
+)
+save_chart(fig, 'ct_17_after_hours')
+
+
+# --- Cycle Time Trend by Area ---
+print("\n26. Cycle Time Trend by Area")
+
+df_ct_trend_area = run_query(f"""
+WITH monthly_ct AS (
+    SELECT
+        f.value::string as area,
+        DATE_TRUNC('month', pr.github_created_at)::DATE as month,
+        AVG(pr.cycle_time_seconds) / 86400.0 as avg_cycle_days
+    FROM RAW_MISC.SWARMIA_PULL_REQUESTS pr,
+    LATERAL FLATTEN(input => pr.owner_team_names) f
+    WHERE pr.pr_status = 'MERGED' AND pr.is_excluded = FALSE
+        AND pr.cycle_time_seconds IS NOT NULL
+        AND f.value::string IN {tuple(ALL_AREAS)}
+        AND pr.github_created_at >= DATEADD('month', -12, CURRENT_DATE)
+        AND DATE_TRUNC('month', pr.github_created_at) < DATE_TRUNC('month', CURRENT_DATE)
+    GROUP BY 1, 2
+),
+with_min_month AS (
+    SELECT area, month, avg_cycle_days,
+        MIN(month) OVER (PARTITION BY area) as area_min_month
+    FROM monthly_ct
+),
+trends AS (
+    SELECT area, month, avg_cycle_days,
+        REGR_SLOPE(avg_cycle_days, DATEDIFF('month', area_min_month, month)) OVER (PARTITION BY area) as trend_slope
+    FROM with_min_month
+)
+SELECT area,
+    ROUND(MIN(trend_slope) * 12, 2) as annual_change_days
+FROM trends GROUP BY 1 ORDER BY annual_change_days DESC
+""")
+
+df_ct_trend_area['annual_change_days'] = df_ct_trend_area['annual_change_days'].astype(float)
+colors = ['#D62828' if x > 0.5 else '#E07A5F' if x > 0 else '#2E86AB'
+          for x in df_ct_trend_area['annual_change_days']]
+
+fig = go.Figure()
+fig.add_trace(go.Bar(
+    x=df_ct_trend_area['area'], y=df_ct_trend_area['annual_change_days'],
+    marker_color=colors,
+    text=[f'{x:+.1f}d/yr' for x in df_ct_trend_area['annual_change_days']], textposition='outside'
+))
+fig.add_hline(y=0, line_color='gray', line_width=1)
+fig.update_layout(
+    title='Cycle Time Trend by Area: Annual Change (days)',
+    xaxis_title='Area', yaxis_title='Change in Cycle Time (days/year)'
+)
+save_chart(fig, 'ct_18_cycle_time_trend_by_area')
+
+
+# --- Batching Penalty by Area ---
+print("\n27. Batching Penalty by Area")
+
+area_case = ' '.join([f"WHEN {filt} THEN '{area}'" for area, filt in AREA_FILTERS.items()])
+df_batch_penalty = run_query(f"""
+WITH area_deploy_stats AS (
+    SELECT
+        CASE {area_case} END as area,
+        CASE WHEN ARRAY_SIZE(pull_request_ids) = 1 THEN 'single' ELSE 'batched' END as batch_type,
+        time_to_deploy_seconds
+    FROM RAW_MISC.SWARMIA_DEPLOYMENTS
+    WHERE time_to_deploy_seconds IS NOT NULL AND pull_request_ids IS NOT NULL
+        AND deployed_at >= DATEADD('month', -6, DATE_TRUNC('month', CURRENT_DATE))
+        AND DATE_TRUNC('month', deployed_at) < DATE_TRUNC('month', CURRENT_DATE)
+)
+SELECT area, batch_type, COUNT(*) as deployments,
+    ROUND(MEDIAN(time_to_deploy_seconds) / 3600.0, 1) as median_ttd_hours
+FROM area_deploy_stats WHERE area IS NOT NULL
+GROUP BY 1, 2 ORDER BY area, batch_type
+""")
+
+df_batch_penalty['median_ttd_hours'] = df_batch_penalty['median_ttd_hours'].astype(float)
+df_pivot = df_batch_penalty.pivot(index='area', columns='batch_type', values='median_ttd_hours').reset_index()
+df_pivot.columns.name = None
+for col in ['single', 'batched']:
+    if col in df_pivot.columns:
+        df_pivot[col] = df_pivot[col].astype(float)
+if 'single' in df_pivot.columns and 'batched' in df_pivot.columns:
+    df_pivot['penalty_hours'] = df_pivot['batched'] - df_pivot['single']
+    df_pivot = df_pivot.sort_values('penalty_hours', ascending=False)
+
+fig = go.Figure()
+fig.add_trace(go.Bar(
+    x=df_pivot['area'], y=df_pivot['single'],
+    name='Single-PR Deploy', marker_color='#2E86AB',
+    text=[f"{h:.0f}h" for h in df_pivot['single']], textposition='outside'
+))
+fig.add_trace(go.Bar(
+    x=df_pivot['area'], y=df_pivot['batched'],
+    name='Batched Deploy', marker_color='#D62828',
+    text=[f"{h:.0f}h" for h in df_pivot['batched']], textposition='outside'
+))
+fig.update_layout(
+    title='Batching Penalty: Single-PR vs Batched Deploys by Area',
+    xaxis_title='Area', yaxis_title='Median TTD (hours)',
+    barmode='group'
+)
+save_chart(fig, 'ct_19_batching_penalty', width=1000)
+
+
+# --- Batch Size vs TTD by Area (scatter) ---
+print("\n28. Batch Size vs TTD by Area")
+
+queries = []
+for area, filter_clause in AREA_FILTERS.items():
+    queries.append(f"""
+        SELECT '{area}' as area,
+            ROUND(AVG(ARRAY_SIZE(pull_request_ids)), 1) as avg_prs_per_deploy,
+            ROUND(100.0 * SUM(CASE WHEN ARRAY_SIZE(pull_request_ids) > 1 THEN 1 ELSE 0 END) / COUNT(*), 0) as pct_batched,
+            ROUND(MEDIAN(time_to_deploy_seconds) / 3600.0, 1) as median_ttd_hours
+        FROM RAW_MISC.SWARMIA_DEPLOYMENTS
+        WHERE {filter_clause} AND time_to_deploy_seconds IS NOT NULL AND pull_request_ids IS NOT NULL
+            AND deployed_at >= DATEADD('month', -6, DATE_TRUNC('month', CURRENT_DATE))
+            AND DATE_TRUNC('month', deployed_at) < DATE_TRUNC('month', CURRENT_DATE)
+    """)
+
+df_batch_ttd = run_query(" UNION ALL ".join(queries))
+for col in ['avg_prs_per_deploy', 'pct_batched', 'median_ttd_hours']:
+    df_batch_ttd[col] = df_batch_ttd[col].astype(float)
+
+fig = px.scatter(df_batch_ttd, x='avg_prs_per_deploy', y='median_ttd_hours',
+    size='pct_batched', text='area', size_max=40,
+    title='Batch Size vs TTD by Area')
+fig.update_traces(textposition='top center')
+fig.update_layout(xaxis_title='Avg PRs per Deployment', yaxis_title='Median TTD (hours)')
+save_chart(fig, 'sd_07_batch_vs_ttd_by_area')
+
+
+print("\n=== AREA-SPECIFIC DEEP DIVE CHARTS COMPLETE ===")
 
 
 print(f"\n{'='*60}")

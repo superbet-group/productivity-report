@@ -153,6 +153,20 @@ Average review time is ~40h (1.7 days), median is ~1 hour. Like cycle time, outl
 
 ![Review Time by Area](charts/ct_08_review_time_by_area.png)
 
+#### Reviewer Count by Area
+
+![Reviewer Count by Area](charts/ct_12_reviewer_count_by_area.png)
+
+Areas with more reviewers per PR tend to have longer review times. Data and Platform have the highest rate of single-reviewer PRs (~85% and ~73% respectively), while Social requires an average of 2.4 reviewers per PR.
+
+| Area | Avg Reviewers | % Single-Reviewer |
+|------|---------------|-------------------|
+| Data | 1.2 | 85% |
+| Platform | 1.5 | 73% |
+| Sports | 1.8 | 47% |
+| Player | 2.0 | 40% |
+| Social | 2.4 | 31% |
+
 ### Outlier Deep Dive
 
 ![Outlier Breakdown](charts/ct_06_outlier_breakdown.png)
@@ -180,6 +194,22 @@ Two-thirds of PRs are small (≤50 lines). 12% are large (>400 lines).
 
 Larger PRs take longer—XL PRs (>400 lines) average 8.6 days vs 1.6 days for XS (≤50 lines).
 
+#### PR Size by Area
+
+![PR Size by Area](charts/ct_13_pr_size_by_area.png)
+
+Areas vary significantly in their proportion of large PRs. Social has the highest rate of XL PRs (21%), while Data has the lowest (11%).
+
+| Area | % XL PRs (>400 lines) |
+|------|-----------------------|
+| Social | 21% |
+| Core Experience | 17% |
+| Gaming | 13% |
+| Player | 12% |
+| Platform | 12% |
+| Sports | 11% |
+| Data | 11% |
+
 ### Build Time and CI Feedback Speed
 
 > If your CI pipeline takes 30 minutes and developers run it 5 times a day, that's 2.5 hours of waiting per person per day.
@@ -200,7 +230,116 @@ Larger PRs take longer—XL PRs (>400 lines) average 8.6 days vs 1.6 days for XS
 
 6. **Significant variation across areas** - Player takes 3.5x longer than Data in review (63h vs 18h). Understanding what drives this gap could reveal improvement opportunities.
 
-*Analysis: `notebooks/cycle_time.ipynb`*
+### Area-Specific Deep Dives
+
+Six additional analyses to surface area-specific patterns and actionable recommendations.
+
+#### Review Load Concentration
+
+> Are a few people doing most of the reviews?
+
+![Review Load Concentration](charts/ct_14_review_load_concentration.png)
+
+| Area | Top 10% Do | Top 20% Do |
+|------|-----------|-----------|
+| Platform | 69% | 82% |
+| Data | 59% | 75% |
+| Social | 54% | 71% |
+| Gaming | 54% | 72% |
+| Core Experience | 51% | 67% |
+| Sports | 50% | 67% |
+| Player | 48% | 65% |
+
+**Key insight**: Platform has the most concentrated review load — top 10% handle 69% of reviews. This creates bottleneck risk if key reviewers are unavailable. Player has the most distributed review load (48%), which is healthier for resilience.
+
+#### Rework Rate by Area
+
+> How often do reviews request changes?
+
+![Rework Rate](charts/ct_15_rework_rate.png)
+
+| Area | Rework Rate |
+|------|-------------|
+| Social | 4.2% |
+| Player | 3.9% |
+| Sports | 3.7% |
+| Core Experience | 3.4% |
+| Gaming | 2.8% |
+| Platform | 2.1% |
+| Data | 1.6% |
+
+Overall rework rates are low (sub-5%), indicating good first-submission quality. Social and Player have the highest rates, which may partly explain their longer review iteration times.
+
+#### Contributor Concentration (Bus Factor)
+
+> What % of PRs come from the top 10% of contributors?
+
+![Contributor Concentration](charts/ct_16_contributor_concentration.png)
+
+| Area | Top 10% Produce |
+|------|-----------------|
+| Player | 37.5% |
+| Core Experience | 36.0% |
+| Data | 34.7% |
+| Platform | 34.3% |
+| Social | 30.2% |
+| Sports | 28.9% |
+| Gaming | 26.6% |
+
+**Key insight**: Player has the highest contributor concentration — top 10% produce 37.5% of PRs. This creates bus factor risk. Gaming is the most distributed at 26.6%.
+
+#### After-Hours Work
+
+> PRs created before 9am, after 6pm, or on weekends.
+
+![After-Hours Work](charts/ct_17_after_hours.png)
+
+| Area | After-Hours % |
+|------|---------------|
+| Platform | 17.0% |
+| Core Experience | 15.1% |
+| Data | 11.8% |
+| Player | 9.8% |
+| Sports | 8.6% |
+| Gaming | 6.5% |
+| Social | 4.8% |
+
+Platform's 17% after-hours rate likely reflects timezone distribution rather than overwork. Social's 4.8% suggests the most contained working hours.
+
+#### Cycle Time Trend by Area
+
+> Is cycle time improving or degrading?
+
+![Cycle Time Trend](charts/ct_18_cycle_time_trend_by_area.png)
+
+| Area | Annual Change |
+|------|--------------|
+| Social | +1.75 days (degrading) |
+| Gaming | +1.47 days (degrading) |
+| Sports | +0.84 days |
+| Core Experience | +0.68 days |
+| Platform | +0.02 days (flat) |
+| Data | -0.02 days (flat) |
+| Player | -0.13 days (improving) |
+
+**Key insight**: Social's cycle time is degrading the fastest (+1.75 days/year). Combined with its already-slow TTD, this requires attention. Player is the only area showing improvement (-0.13 days/year).
+
+#### Batching Penalty by Area
+
+> How much slower are batched (multi-PR) deployments?
+
+![Batching Penalty](charts/ct_19_batching_penalty.png)
+
+| Area | Single-PR TTD | Batched TTD | Penalty |
+|------|---------------|-------------|---------|
+| Social | ~24h | ~408h | 384h |
+| Platform | ~4h | ~160h | 156h |
+| Player | ~43h | ~150h | 107h |
+| Sports | ~36h | ~108h | 72h |
+
+**Key insight**: Social pays the biggest batching penalty (384h gap). Sports has the smallest penalty (72h) despite having the highest batch rate — suggesting their batching is at least operationally efficient.
+
+*Analysis: `notebooks/cycle_time.ipynb`, `notebooks/software_delivery.ipynb`*
 
 
 ## Software Delivery Performance
@@ -295,6 +434,27 @@ Deployment frequency varies significantly by area. Platform has the highest conc
 | **Deployment Size** | Larger code changes take longer to deploy |
 
 Most deployments are single-PR, and these deploy faster than multi-PR batches.
+
+#### By Area: What's Driving Each Area's TTD?
+
+![Batch Size vs TTD by Area](charts/sd_07_batch_vs_ttd_by_area.png)
+
+| Area | Avg PRs/Deploy | % Batched | Median TTD | Primary Driver |
+|------|----------------|-----------|------------|----------------|
+| Sports | 13.4 | 88% | 53h | High batching |
+| Platform | 5.8 | 54% | 13h | — (already fast) |
+| Social | 2.3 | 45% | 168h | Process friction (not batching) |
+| Player | 1.5 | 22% | 86h | PR age, not batching |
+
+**Key insight**: Batching doesn't fully explain TTD differences.
+- **Sports** has the highest batching (13.4 PRs/deploy) but moderate TTD — batching is a lever to pull
+- **Social** has low batching (2.3 PRs/deploy) but the worst TTD (168h) — the problem is deployment process friction, not batch size
+- **Player** deploys mostly single PRs (22% batched) but still has 86h TTD — PRs wait a long time after merge
+
+**Actionable recommendations**:
+- **Sports VP**: Reduce batch sizes — 88% of deploys are batched. More frequent, smaller deploys would cut TTD significantly.
+- **Social VP**: Investigate deployment process — low batching but worst TTD suggests manual gates, approval processes, or infrastructure issues.
+- **Player VP**: Review deployment triggers — single-PR deploys waiting 86h suggests scheduled/manual releases rather than continuous deployment.
 
 #### By Change Type
 
@@ -444,6 +604,161 @@ At-a-glance comparison of each area's performance across key metrics.
 | Fastest Time to Deploy | Platform | 12.6h |
 | Highest Deploy Frequency | Transact, Release Engineering, App Frameworks | 2-3x/week |
 
+
+## Recommendations by Area
+
+> Synthesized insights for each area, combining PR metrics, cycle time, review patterns, and deployment data.
+
+### Player
+
+**Status**: 🔴 Needs attention on cycle time and review time
+
+| Metric | Value | vs Org Avg |
+|--------|-------|-----------|
+| Cycle Time | 5.3 days | 1.8x slower |
+| Review Time | 64h | 1.6x slower |
+| Outlier Rate | 9.4% | Highest |
+| Review Iteration | 51h | Highest |
+| Contributor Concentration | 37.5% from top 10% | Highest (bus factor risk) |
+| Rework Rate | 3.9% | Above average |
+| Cycle Time Trend | -0.13 days/year | Slightly improving |
+
+**Key bottleneck**: Review iteration time (51h) — far higher than the org average (23h). Combined with the highest outlier rate (9.4%) and highest contributor concentration (37.5%), PRs get stuck in extended back-and-forth while output depends heavily on a few people.
+
+**Positive signal**: Player is the only area where cycle time is improving (-0.13 days/year).
+
+**Recommendations**:
+1. **Break down large PRs** — Player's outlier rate suggests large, complex changes. Encourage incremental PRs.
+2. **Investigate review iteration** — Why does review take 2x longer than other areas? Are requirements unclear? Codebase complexity?
+3. **Reduce contributor concentration** — Top 10% produce 37.5% of PRs. Pair programming, mentoring, or rotating ownership could distribute knowledge.
+4. **Learn from Platform/Data** — Both have review times under 20h. What review practices differ?
+
+---
+
+### Social
+
+**Status**: 🔴 Needs attention on TTD and cycle time trend
+
+| Metric | Value | vs Org Avg |
+|--------|-------|-----------|
+| Time to Deploy | 7.0 days | Slowest |
+| % XL PRs | 21% | Highest |
+| Avg Reviewers | 2.4 | Most reviewers required |
+| PR Age at Deploy | 275h | Longest wait |
+| Rework Rate | 4.2% | Highest |
+| Batching Penalty | 384h gap | Largest |
+| Cycle Time Trend | +1.75 days/year | Fastest degradation |
+
+**Key bottleneck**: Deployment pipeline latency — PRs wait 275h (11+ days) from merge to deploy. Social also has the highest rework rate (4.2%), the biggest batching penalty (384h), and the fastest-degrading cycle time (+1.75 days/year). This is the area most urgently needing process intervention.
+
+**Recommendations**:
+1. **Investigate deployment process urgently** — 7-day TTD with low batching (2.3 PRs/deploy) points to process friction, not batch size. Manual gates? Approval processes? Infrastructure issues?
+2. **Break up XL PRs** — 21% XL rate is nearly 2x the org average. Smaller PRs = faster reviews, faster deploys.
+3. **Address rework rate** — 4.2% is the highest. Clearer requirements or design reviews before implementation could reduce review iteration.
+4. **Arrest cycle time degradation** — At +1.75 days/year, Social's cycle time is worsening fastest. Root-cause analysis needed.
+
+---
+
+### Sports
+
+**Status**: 🟡 Good across most metrics
+
+| Metric | Value | vs Org Avg |
+|--------|-------|-----------|
+| Cycle Time | 3.5 days | Average |
+| TTD | 2.2 days | Above average |
+| Batch Size | 13.4 PRs/deploy | Highest |
+| Time to First Review | 26h | Slowest |
+| Batching Penalty | 72h gap | Smallest |
+| Cycle Time Trend | +0.84 days/year | Slight degradation |
+
+**Key opportunity**: Time to first review (26h) is the slowest in the org. Sports also has the highest deployment batching (13.4 PRs/deploy), but the smallest batching penalty (72h) — suggesting operationally efficient batched deploys.
+
+**Recommendations**:
+1. **Speed up first review** — 26h average time to first review vs 8h for Data. Consider review load balancing or async review practices.
+2. **Reduce deployment batching** — 13.4 PRs per deployment is high. More frequent, smaller deploys would reduce TTD, and the small batching penalty means the transition should be smooth.
+3. **Maintain current strengths** — Cycle time and PR size metrics are healthy; focus improvements on review wait time.
+
+---
+
+### Platform
+
+**Status**: 🟢 Strong across all metrics
+
+| Metric | Value | vs Org Avg |
+|--------|-------|-----------|
+| Time to Deploy | 12.6h | Fastest |
+| Review Time | 18h | Top tier |
+| Single-reviewer PRs | 73% | High efficiency |
+| Deploy Frequency | Highest | Elite tier teams |
+| Review Load Concentration | 69% by top 10% | Most concentrated |
+| After-Hours Work | 17% | Highest |
+| Cycle Time Trend | +0.02 days/year | Stable |
+
+**What's working**: Platform has the fastest deployment pipeline and efficient single-reviewer PRs. Cycle time is stable year-over-year. They're the model for other areas.
+
+**Watch items**: Review load is the most concentrated (69% by top 10%) — a few key reviewers are critical. After-hours rate (17%) is highest, likely reflecting timezone distribution but worth monitoring.
+
+**Recommendations**:
+1. **Document practices** — What enables 73% single-reviewer PRs and 12h TTD? Share patterns with other areas.
+2. **Push for Elite TTD** — Gap to Elite tier (<1h) is 11.6h. Explore automated deployment triggers.
+3. **Distribute review load** — Top 10% handle 69% of reviews. If key reviewers leave, review throughput would drop significantly.
+4. **Continue investment** — Platform's infrastructure enables other teams; maintaining this edge benefits the org.
+
+---
+
+### Data
+
+**Status**: 🟢 Strong on PR metrics (no deployment data)
+
+| Metric | Value | vs Org Avg |
+|--------|-------|-----------|
+| Cycle Time | 1.5 days | Fastest |
+| Review Time | 18h | Top tier |
+| Single-reviewer PRs | 85% | Highest |
+| Time to First Review | 7.6h | Fastest |
+| Rework Rate | 1.6% | Lowest |
+| Cycle Time Trend | -0.02 days/year | Stable |
+
+**What's working**: Fastest time to first review (7.6h), highest single-reviewer rate (85%), and lowest rework rate (1.6%). Data teams have efficient, lightweight review processes with high first-submission quality. Cycle time is stable.
+
+**Recommendations**:
+1. **Add deployment tracking** — Data is missing from DORA metrics. Adding deployment filters would complete the picture.
+2. **Share review practices** — 85% single-reviewer rate and 1.6% rework rate suggests clear ownership and quality standards. Document this pattern for other areas.
+
+---
+
+### Core Experience & Gaming
+
+**Status**: 🟡 Good on PR metrics (no deployment data)
+
+Both areas have reasonable cycle times (2.3d, 3.5d) but lack deployment tracking.
+
+| Metric | Core Experience | Gaming |
+|--------|-----------------|--------|
+| Cycle Time Trend | +0.68 days/year | +1.47 days/year |
+| Contributor Concentration | 36% from top 10% | 26.6% (most distributed) |
+| After-Hours Work | 15.1% | 6.5% |
+
+**Recommendations**:
+1. **Add deployment tracking** — Required for complete DORA metrics.
+2. **Core Experience**: Monitor 17% XL PR rate — second highest after Social. 15.1% after-hours rate is worth investigating.
+3. **Gaming**: Cycle time degrading at +1.47 days/year (second fastest after Social). Monitor closely. Positively, Gaming has the most distributed contributor base (26.6%), indicating low bus factor risk.
+
+---
+
+### Cross-Area Patterns
+
+| Finding | Areas Affected | Recommendation |
+|---------|----------------|----------------|
+| High outlier rates | Player (9.4%), Social (6.6%) | PR size limits, incremental delivery |
+| Slow first review | Sports (26h), Player (18h) | Review load balancing |
+| Multi-reviewer overhead | Social (2.4 avg), Player (2.0) | Clear ownership, reduce reviewer requirements |
+| Deployment batching | Sports (13.4 PRs), Social (6.9 PRs) | More frequent, smaller deploys |
+| Cycle time degradation | Social (+1.75d/yr), Gaming (+1.47d/yr) | Root-cause analysis, process review |
+| Review load concentration | Platform (69%), Data (59%) | Distribute review ownership |
+| Contributor concentration | Player (37.5%), Core Exp (36%) | Knowledge sharing, pair programming |
+| High rework rate | Social (4.2%), Player (3.9%) | Clearer requirements, design reviews |
 
 ## Recommendations
 
