@@ -1533,55 +1533,36 @@ fig.update_layout(
 save_chart(fig, 'ct_17_after_hours')
 
 
-# --- Cycle Time Trend by Area ---
-print("\n26. Cycle Time Trend by Area")
+# --- Cycle Time Trend by Area (Time Series) ---
+print("\n26. Cycle Time Trend by Area (Time Series)")
 
 df_ct_trend_area = run_query(f"""
-WITH monthly_ct AS (
-    SELECT
-        f.value::string as area,
-        DATE_TRUNC('month', pr.github_created_at)::DATE as month,
-        AVG(pr.cycle_time_seconds) / 86400.0 as avg_cycle_days
-    FROM RAW_MISC.SWARMIA_PULL_REQUESTS pr,
-    LATERAL FLATTEN(input => pr.owner_team_names) f
-    WHERE pr.pr_status = 'MERGED' AND pr.is_excluded = FALSE
-        AND pr.cycle_time_seconds IS NOT NULL
-        AND f.value::string IN {tuple(ALL_AREAS)}
-        AND pr.github_created_at >= DATEADD('month', -12, CURRENT_DATE)
-        AND DATE_TRUNC('month', pr.github_created_at) < DATE_TRUNC('month', CURRENT_DATE)
-    GROUP BY 1, 2
-),
-with_min_month AS (
-    SELECT area, month, avg_cycle_days,
-        MIN(month) OVER (PARTITION BY area) as area_min_month
-    FROM monthly_ct
-),
-trends AS (
-    SELECT area, month, avg_cycle_days,
-        REGR_SLOPE(avg_cycle_days, DATEDIFF('month', area_min_month, month)) OVER (PARTITION BY area) as trend_slope
-    FROM with_min_month
-)
-SELECT area,
-    ROUND(MIN(trend_slope) * 12, 2) as annual_change_days
-FROM trends GROUP BY 1 ORDER BY annual_change_days DESC
+SELECT
+    f.value::string as area,
+    DATE_TRUNC('month', pr.github_created_at)::DATE as month,
+    ROUND(MEDIAN(pr.cycle_time_seconds) / 86400.0, 2) as median_cycle_days
+FROM RAW_MISC.SWARMIA_PULL_REQUESTS pr,
+LATERAL FLATTEN(input => pr.owner_team_names) f
+WHERE pr.pr_status = 'MERGED' AND pr.is_excluded = FALSE
+    AND pr.cycle_time_seconds IS NOT NULL
+    AND f.value::string IN {tuple(ALL_AREAS)}
+    AND pr.github_created_at >= DATEADD('month', -12, CURRENT_DATE)
+    AND DATE_TRUNC('month', pr.github_created_at) < DATE_TRUNC('month', CURRENT_DATE)
+GROUP BY 1, 2
+ORDER BY 1, 2
 """)
 
-df_ct_trend_area['annual_change_days'] = df_ct_trend_area['annual_change_days'].astype(float)
-colors = ['#D62828' if x > 0.5 else '#E07A5F' if x > 0 else '#2E86AB'
-          for x in df_ct_trend_area['annual_change_days']]
+df_ct_trend_area['month'] = pd.to_datetime(df_ct_trend_area['month'])
+df_ct_trend_area['median_cycle_days'] = df_ct_trend_area['median_cycle_days'].astype(float)
 
-fig = go.Figure()
-fig.add_trace(go.Bar(
-    x=df_ct_trend_area['area'], y=df_ct_trend_area['annual_change_days'],
-    marker_color=colors,
-    text=[f'{x:+.1f}d/yr' for x in df_ct_trend_area['annual_change_days']], textposition='outside'
-))
-fig.add_hline(y=0, line_color='gray', line_width=1)
+fig = px.line(df_ct_trend_area, x='month', y='median_cycle_days', color='area',
+              title='Median Cycle Time by Area (Last 12 Months)', markers=True)
 fig.update_layout(
-    title='Cycle Time Trend by Area: Annual Change (days)',
-    xaxis_title='Area', yaxis_title='Change in Cycle Time (days/year)'
+    xaxis_title='Month', yaxis_title='Median Cycle Time (days)',
+    legend_title='Area',
+    yaxis=dict(rangemode='tozero')
 )
-save_chart(fig, 'ct_18_cycle_time_trend_by_area')
+save_chart(fig, 'ct_18_cycle_time_trend_by_area', width=1000)
 
 
 # --- Batching Penalty by Area ---
