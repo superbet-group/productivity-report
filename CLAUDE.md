@@ -126,11 +126,39 @@ But **Social is flat** - it's the area, tribe, AND squad all in one. Members bel
 
 ## Chart Conventions
 
-- Use uniform colors unless legend needed for differentiation
-- Prefer charts over tables for visual impact
+**Goal: someone can understand the insight instantly by looking at the chart.**
+
+- **Simple and clear.** Bar charts, grouped bars, stacked areas, and line charts are the workhorses. Avoid heatmaps and complex chart types — if you have to squint to parse it, use something simpler.
+- **Title says what you're looking at, chart shows the pattern, text below explains the finding.** Title is descriptive ("PR Throughput by Area"), not a conclusion. One or two print lines after the chart call out the specific insight with numbers.
+- **Annotate directly on the chart** where it helps — benchmark lines, averages, labels on bars. But the main finding goes in the text below, not crammed into the title.
+- **Benchmark lines and zones** where applicable (e.g., Great/Good/Needs Attention bands on cycle time charts).
+- Use uniform colors unless legend needed for differentiation. Use `COHORT_COLORS` for AI cohort charts.
 - Export charts to `charts/` directory
 - Always update both `export_charts.py` AND the notebook when adding charts
 - Run `python export_charts.py` to regenerate all charts
+
+## Running Notebooks
+
+Keyring is configured for Snowflake auth. Run notebooks headlessly after editing:
+```bash
+jupyter nbconvert --to notebook --execute notebooks/pr_throughput.ipynb --output pr_throughput.ipynb --ExecutePreprocessor.timeout=300 --ExecutePreprocessor.kernel_name=opspack
+```
+
+**Renderer config** (set in each notebook's import cell):
+```python
+pio.renderers.default = 'plotly_mimetype+png'  # PNG fallback required for headless runs
+pio.defaults.default_width = 900
+pio.defaults.default_height = 500
+pio.defaults.default_scale = 2  # crisp images
+```
+Without the PNG fallback, plotly charts render blank after headless execution (no live JS).
+
+## AI Impact Analysis Notes
+
+- **"Non-user" ≠ no AI.** ANS v4 only detects IDE concurrency patterns. Many "Non-users" use ChatGPT, Claude, or browser-based AI tools that ANS doesn't track. Don't treat Non-user as a clean AI-free baseline.
+- **Commits table** (`SWARMIA_COMMITS`) has no `owner_team_names`. Scope to area-filtered authors via subquery on the PR table.
+- **Decimal types**: Snowflake connector returns `decimal.Decimal`. Always `.astype(float)` before arithmetic or plotting.
+- **Outlier handling**: Use median + winsorized means (cap at 5k lines/PR) instead of raw means for lines metrics.
 
 ## Insights Should Be Data-Driven
 
